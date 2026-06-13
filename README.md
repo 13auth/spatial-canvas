@@ -69,6 +69,7 @@ into a window it drops to the normal z-order and the taskbar returns.
 | Minimap (bird's-eye) | Bottom-right corner · click = jump there (toggle in panel) |
 | Sticky note (annotation) | **Ctrl+Shift+N** = note at cursor · type, **Tab**=color, **Enter/Esc**=done |
 | Move / edit / resize / delete note | Left-drag · double-click = edit · bottom-right corner = resize · hover **✕** = delete |
+| Export canvas to PNG | **Ctrl+Shift+S** (saved to your Pictures folder) |
 | All shortcuts | **F1** |
 | **Close** a window (the app) | Hover → **✕** top-right (the app's own save dialog appears) |
 | Settings panel | Top-left **⚙** or S |

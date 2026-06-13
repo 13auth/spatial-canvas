@@ -293,6 +293,7 @@ namespace
     std::mutex g_updateMutex;
     bool g_updateAvail = false;                // M48: kalıcı HUD ipucu için
     D2D1_RECT_F g_updateRect{};                // M51: pill hit-test (tıkla=release aç)
+    bool g_pngRequest = false;                 // M52: tuvali PNG'ye aktar isteği (Render'da işlenir)
     // M50: oturum görünüm restore (settings'ten yüklenen son kamera)
     float g_loadCamX = 0, g_loadCamY = 0, g_loadCamZ = 0;
     bool g_hasSavedCam = false;
@@ -1625,6 +1626,7 @@ static void DrawOverlay()
             L"Ctrl+P:  tile'ı ekrana sabitle (HUD)\n"
             L"Ctrl+G:  pencereleri ızgaraya diz\n"
             L"Ctrl+Shift+N:  yapışkan not (Tab=renk)\n"
+            L"Ctrl+Shift+S:  tuvali PNG'ye aktar\n"
             L"Delete:  seçilileri çıkar\n"
             L"Ctrl+Shift+1..4:  yer imi kaydet\n"
             L"Ctrl+1..4:  yer imine git\n"
@@ -1638,6 +1640,7 @@ static void DrawOverlay()
             L"Ctrl+P:  pin tile to screen (HUD)\n"
             L"Ctrl+G:  arrange windows into grid\n"
             L"Ctrl+Shift+N:  sticky note (Tab=color)\n"
+            L"Ctrl+Shift+S:  export canvas to PNG\n"
             L"Delete:  remove selected\n"
             L"Ctrl+Shift+1..4:  save bookmark\n"
             L"Ctrl+1..4:  go to bookmark\n"
@@ -2775,6 +2778,58 @@ static void AdoptNewWindows()
     }
 }
 
+// M52: tuvalin o anki görünümünü PNG'ye kaydet (paylaşım için). Ana thread'de,
+// Render içinden Present'tan ÖNCE çağrılır (backbuffer dolu). Yol döner (boş=hata).
+static std::wstring SaveCanvasPng()
+{
+    if (!g_swap || !g_ctx || !g_device || !g_wic) return L"";
+    winrt::com_ptr<ID3D11Texture2D> back;
+    if (FAILED(g_swap->GetBuffer(0, __uuidof(ID3D11Texture2D), back.put_void()))) return L"";
+    D3D11_TEXTURE2D_DESC d{}; back->GetDesc(&d);
+    D3D11_TEXTURE2D_DESC sd = d;
+    sd.Usage = D3D11_USAGE_STAGING; sd.BindFlags = 0;
+    sd.CPUAccessFlags = D3D11_CPU_ACCESS_READ; sd.MiscFlags = 0;
+    winrt::com_ptr<ID3D11Texture2D> stage;
+    if (FAILED(g_device->CreateTexture2D(&sd, nullptr, stage.put()))) return L"";
+    g_ctx->CopyResource(stage.get(), back.get());
+    D3D11_MAPPED_SUBRESOURCE m{};
+    if (FAILED(g_ctx->Map(stage.get(), 0, D3D11_MAP_READ, 0, &m))) return L"";
+    // dosya yolu: %USERPROFILE%\Pictures\SpatialCanvas_<zaman>.png
+    wchar_t* up = nullptr; size_t ul = 0; _wdupenv_s(&up, &ul, L"USERPROFILE");
+    std::wstring dir = (up ? up : L"C:"); free(up);
+    dir += L"\\Pictures"; CreateDirectoryW(dir.c_str(), nullptr);
+    SYSTEMTIME st; GetLocalTime(&st);
+    wchar_t name[80];
+    swprintf_s(name, L"\\SpatialCanvas_%04d%02d%02d_%02d%02d%02d.png",
+        st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+    std::wstring path = dir + name;
+    bool ok = false;
+    winrt::com_ptr<IWICBitmapEncoder> enc;
+    winrt::com_ptr<IWICStream> stream;
+    if (SUCCEEDED(g_wic->CreateStream(stream.put())) &&
+        SUCCEEDED(stream->InitializeFromFilename(path.c_str(), GENERIC_WRITE)) &&
+        SUCCEEDED(g_wic->CreateEncoder(GUID_ContainerFormatPng, nullptr, enc.put())) &&
+        SUCCEEDED(enc->Initialize(stream.get(), WICBitmapEncoderNoCache)))
+    {
+        winrt::com_ptr<IWICBitmapFrameEncode> frame;
+        IPropertyBag2* props = nullptr;
+        if (SUCCEEDED(enc->CreateNewFrame(frame.put(), &props)) &&
+            SUCCEEDED(frame->Initialize(props)))
+        {
+            frame->SetSize(d.Width, d.Height);
+            WICPixelFormatGUID fmt = GUID_WICPixelFormat32bppBGRA; // swapchain BGRA (D2D interop)
+            frame->SetPixelFormat(&fmt);
+            if (SUCCEEDED(frame->WritePixels(d.Height, m.RowPitch, m.RowPitch * d.Height,
+                    (BYTE*)m.pData)) &&
+                SUCCEEDED(frame->Commit()) && SUCCEEDED(enc->Commit()))
+                ok = true;
+        }
+        if (props) props->Release();
+    }
+    g_ctx->Unmap(stage.get(), 0);
+    return ok ? path : L"";
+}
+
 // ---- Render ----
 static void Render()
 {
@@ -2831,6 +2886,13 @@ static void Render()
         drawQuad(t.px, t.py, t.pw, t.ph, t.srv.get(), t.opacity, t.blur, t.ww, t.wh);
     }
     DrawOverlay(); // M4: başlık etiketleri + hover vurgusu
+    if (g_pngRequest) // M52: PNG dışa aktar (Present'tan ÖNCE - backbuffer dolu, toast karede yok)
+    {
+        g_pngRequest = false;
+        std::wstring p = SaveCanvasPng();
+        ShowToast(p.empty() ? TL(L"PNG export failed", L"PNG dışa aktarma başarısız")
+            : TL(L"Saved: ", L"Kaydedildi: ") + p);
+    }
     HRESULT hr = g_swap->Present(1, 0);
     if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET)
         g_deviceLost = true; // M18: ana döngü HandleDeviceLost ile kurtarır
@@ -3484,6 +3546,7 @@ static void ProcessIpcCommand(const std::wstring& cmd)
 {
     auto starts = [&](const wchar_t* p) { return cmd.rfind(p, 0) == 0; };
     if (cmd == L"fit") FitCamera(true);
+    else if (cmd == L"png") g_pngRequest = true; // M52: tuvali PNG'ye aktar
     else if (cmd == L"arrange") ArrangeGrid(); // M35
     else if (cmd == L"quit") PostQuitMessage(0);
     else if (starts(L"save:")) SaveNamedLayout(cmd.substr(5)); // M42
@@ -4273,6 +4336,12 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             g_notes.push_back(n);
             g_editNote = (int)g_notes.size() - 1;
             ShowToast(TL(L"Note: type, Tab=color, Enter=done", L"Not: yaz, Tab=renk, Enter=bitir"));
+            return 0;
+        }
+        // M52: Ctrl+Shift+S - tuvali PNG'ye aktar (Render bir sonraki karede kaydeder)
+        if (mods == 5 && vk == 'S' && g_activeTile < 0)
+        {
+            g_pngRequest = true;
             return 0;
         }
         // M13: tuval yer imleri - Ctrl+Shift+1..4 kaydet, Ctrl+1..4 zıpla

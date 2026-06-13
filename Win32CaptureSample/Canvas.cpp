@@ -182,7 +182,8 @@ namespace
     bool g_searchOpen = false;
     std::wstring g_searchText;
     std::vector<int> g_matches;
-    int g_searchSel = 0;
+    std::vector<int> g_noteMatches; // M49: eşleşen not indeksleri (tile'lardan sonra gezilir)
+    int g_searchSel = 0;            // birleşik indeks: [0..g_matches) tile, [g_matches..) not
     D2D1_RECT_F g_searchBtnRect{};  // M11: üst-orta Ara butonu
     // M11: çoklu seçim + çoğaltma
     std::unordered_set<HWND> g_selSet;
@@ -1256,6 +1257,10 @@ static void DrawNotes()
         bool hovered = (mwx >= n.wx && mwx <= n.wx + n.w && mwy >= n.wy && mwy <= n.wy + n.h);
         if (hovered) g_hoverNote = i;
         bool editing = (i == g_editNote);
+        // M49: arama modunda eşleşmeyen not karartılır (tile'larla tutarlı)
+        bool searchDim = g_searchOpen && !g_searchText.empty();
+        bool noteMatch = !searchDim ||
+            std::find(g_noteMatches.begin(), g_noteMatches.end(), i) != g_noteMatches.end();
         // --- gövde + metin: dünya-uzayında (zoom'la ölçeklenir) ---
         g_d2dRT->SetTransform(world);
         D2D1_RECT_F wr = D2D1::RectF(n.wx, n.wy, n.wx + n.w, n.wy + n.h);
@@ -1271,7 +1276,18 @@ static void DrawNotes()
             g_d2dRT->DrawText(disp.c_str(), (UINT32)disp.size(), g_textFmtN.get(),
                 D2D1::RectF(n.wx + pad, n.wy + pad, n.wx + n.w - pad, n.wy + n.h - pad),
                 g_brPanelBg.get());
+        if (!noteMatch) g_d2dRT->FillRoundedRectangle(rr, g_brBg.get()); // M49: eşleşmeyeni karart
         g_d2dRT->SetTransform(D2D1::Matrix3x2F::Identity());
+        // M49: arama eşleşmesi - amber halka (seçili olan daha kalın)
+        if (searchDim && noteMatch)
+        {
+            int selNote = (g_searchSel >= (int)g_matches.size() &&
+                g_searchSel - (int)g_matches.size() < (int)g_noteMatches.size())
+                ? g_noteMatches[g_searchSel - (int)g_matches.size()] : -1;
+            bool isSel = (i == selNote);
+            g_d2dRT->DrawRectangle(D2D1::RectF(sx - 3, sy - 3, sx + sw + 3, sy + sh + 3),
+                g_brSel.get(), isSel ? 4.0f : 2.0f);
+        }
         // --- hover kontrolleri: ekran-sabit boyut, tıklanabilir ---
         if (hovered && sw > 80 && sh > 44)
         {
@@ -1417,8 +1433,13 @@ static void DrawOverlay()
         g_d2dRT->DrawRoundedRectangle(rb, g_brSel.get(), 1.5f);
         std::wstring st = TL(L"Search: ", L"Ara: ") + g_searchText + L"_";
         if (searching)
-            st += L"   (" + std::to_wstring(g_matches.empty() ? 0 : g_searchSel + 1)
-                + L"/" + std::to_wstring((int)g_matches.size()) + L")";
+        {
+            int total = (int)(g_matches.size() + g_noteMatches.size()); // M49: tile+not
+            st += L"   (" + std::to_wstring(total == 0 ? 0 : g_searchSel + 1)
+                + L"/" + std::to_wstring(total) + L")";
+            if (!g_noteMatches.empty()) // not eşleşmesi varsa belirt
+                st += L"  " + std::to_wstring((int)g_noteMatches.size()) + TL(L" note", L" not");
+        }
         g_d2dRT->DrawText(st.c_str(), (UINT32)st.size(), g_textFmtL.get(),
             D2D1::RectF(box.left + 16, box.top, box.right - 12, box.bottom), g_brText.get());
     }
@@ -3157,6 +3178,7 @@ static std::wstring LowerW(std::wstring s)
 static void UpdateMatches()
 {
     g_matches.clear();
+    g_noteMatches.clear(); // M49
     std::wstring q = LowerW(g_searchText);
     if (q.empty()) { g_searchSel = 0; return; }
     for (int i = 0; i < (int)g_tiles.size(); i++)
@@ -3165,7 +3187,10 @@ static void UpdateMatches()
             LowerW(g_tiles[i].exe).find(q) != std::wstring::npos)
             g_matches.push_back(i);
     }
-    if (g_searchSel >= (int)g_matches.size()) g_searchSel = 0;
+    for (int i = 0; i < (int)g_notes.size(); i++) // M49: not metninde de ara
+        if (LowerW(g_notes[i].text).find(q) != std::wstring::npos)
+            g_noteMatches.push_back(i);
+    if (g_searchSel >= (int)(g_matches.size() + g_noteMatches.size())) g_searchSel = 0;
 }
 
 static void CloseSearch()
@@ -3173,6 +3198,7 @@ static void CloseSearch()
     g_searchOpen = false;
     g_searchText.clear();
     g_matches.clear();
+    g_noteMatches.clear(); // M49
     g_searchSel = 0;
 }
 
@@ -3188,6 +3214,32 @@ static void FlyToTile(int i)
     g_camT.x = t.wx + t.ww / 2.0f - g_sw / (2.0f * z);
     g_camT.y = t.wy + t.wh / 2.0f - g_sh / (2.0f * z);
     if (z < 0.75f) g_swapArmed = true;
+}
+
+// M49: kamerayı nota uçur (okunur zoom; dalış yok - notlar dalınmaz)
+static void FlyToNote(int i)
+{
+    if (i < 0 || i >= (int)g_notes.size()) return;
+    g_momentum = false;
+    Note& n = g_notes[i];
+    float z = std::clamp(std::min((float)g_sw / (n.w * 1.6f), (float)g_sh / (n.h * 1.6f)),
+        0.02f, 1.5f);
+    g_camT.zoom = z;
+    g_camT.x = n.wx + n.w / 2.0f - g_sw / (2.0f * z);
+    g_camT.y = n.wy + n.h / 2.0f - g_sh / (2.0f * z);
+    g_swapArmed = true;
+}
+
+// M49: arama seçimi (birleşik) - tile mı not mu, ona uç
+static void FlyToSearchSel()
+{
+    int nt = (int)g_matches.size();
+    if (g_searchSel < nt) FlyToTile(g_matches[g_searchSel]);
+    else
+    {
+        int ni = g_searchSel - nt;
+        if (ni >= 0 && ni < (int)g_noteMatches.size()) FlyToNote(g_noteMatches[ni]);
+    }
 }
 
 // ---- M11: çoğaltma + çoklu seçim eylemleri ----
@@ -4064,22 +4116,21 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         if (g_searchOpen) // M9: arama modu tüm tuşları yutar
         {
             if (vk == VK_ESCAPE || is(g_set.kbSearch)) { CloseSearch(); return 0; }
+            int total = (int)(g_matches.size() + g_noteMatches.size()); // M49: tile+not
             if (vk == VK_RETURN)
             {
-                if (!g_matches.empty()) FlyToTile(g_matches[g_searchSel]);
+                if (total > 0) FlyToSearchSel(); // M49: tile ya da nota uç
                 CloseSearch();
                 return 0;
             }
             if (vk == VK_DOWN || vk == VK_TAB)
             {
-                if (!g_matches.empty())
-                    g_searchSel = (g_searchSel + 1) % (int)g_matches.size();
+                if (total > 0) g_searchSel = (g_searchSel + 1) % total;
                 return 0;
             }
             if (vk == VK_UP)
             {
-                if (!g_matches.empty())
-                    g_searchSel = (g_searchSel + (int)g_matches.size() - 1) % (int)g_matches.size();
+                if (total > 0) g_searchSel = (g_searchSel + total - 1) % total;
                 return 0;
             }
             return 0; // karakterler WM_CHAR'da işlenir

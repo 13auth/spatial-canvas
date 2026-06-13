@@ -117,6 +117,7 @@ struct Settings
     bool updateCheck = true; // M48: açılışta yeni-sürüm kontrolü (sadece bildirim)
     // M48: sürüm feed'i (raw VERSION dosyası, içerik "0.47.0"). HTTP/HTTPS (WinINet).
     std::wstring updateUrl = L"https://raw.githubusercontent.com/13auth/spatial-canvas/main/VERSION";
+    std::wstring lastRun; // M53: son çalıştırılan sürüm (güncelleme-sonrası bildirim)
     int fpsCap = 30;        // 15 / 30 / 60
     int animSpeed = 1;      // 0 yavaş, 1 normal, 2 hızlı
     bool labels = true;     // başlık etiketleri
@@ -2257,6 +2258,7 @@ static void LoadSettings()
         else if (k == L"lang") g_set.lang = _wtoi(v.c_str()); // M47
         else if (k == L"updchk") g_set.updateCheck = _wtoi(v.c_str()) != 0; // M48
         else if (k == L"updurl") g_set.updateUrl = v; // M48 (test/override)
+        else if (k == L"lastrun") g_set.lastRun = v; // M53
         else if (k == L"restview") g_set.restoreView = _wtoi(v.c_str()) != 0; // M50
         else if (k == L"camx") { g_loadCamX = (float)_wtof(v.c_str()); g_hasSavedCam = true; } // M50
         else if (k == L"camy") g_loadCamY = (float)_wtof(v.c_str()); // M50
@@ -2328,6 +2330,7 @@ static void SaveSettings()
     f << L"lang=" << g_set.lang << L"\n"; // M47
     f << L"updchk=" << (g_set.updateCheck ? 1 : 0) << L"\n"; // M48
     f << L"updurl=" << g_set.updateUrl << L"\n"; // M48
+    f << L"lastrun=" << g_set.lastRun << L"\n"; // M53
     f << L"restview=" << (g_set.restoreView ? 1 : 0) << L"\n"; // M50
     // M50: son kamera görünümü (hedef kamera = kullanıcının baktığı yer)
     f << L"camx=" << g_camT.x << L"\ncamy=" << g_camT.y << L"\ncamz=" << g_camT.zoom << L"\n";
@@ -4512,6 +4515,12 @@ int RunCanvasApp()
     // M48: yeni-sürüm bildirimi (opt-in; ağ yoksa sessiz, sadece bildirim)
     if (g_set.updateCheck)
         std::thread(UpdateCheckThread, g_set.updateUrl).detach();
+    // M53: bu sürüm son çalıştırılandan farklıysa = güncellendi → bir kez bildir
+    if (!g_set.lastRun.empty() && g_set.lastRun != APP_VERSION)
+        ShowToast(TL(L"Updated to v", L"Güncellendi: v") + std::wstring(APP_VERSION) +
+            TL(L" — press F1 for shortcuts", L" — kısayollar için F1"));
+    g_set.lastRun = APP_VERSION;
+    SaveSettings(); // yeni sürümü kaydet (bildirim bir kez gösterilsin)
 
     InitD3D();
     InitD2D();

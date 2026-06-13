@@ -108,7 +108,7 @@ struct Tile
 struct Key { int vk = 0; int mods = 0; }; // mods: 1=Ctrl 2=Alt 4=Shift
 
 // M48: uygulama sürümü (app.rc VERSIONINFO ile SENKRON tut - RELEASE.md sürüm listesinde)
-constexpr const wchar_t* APP_VERSION = L"0.48.0";
+constexpr const wchar_t* APP_VERSION = L"0.49.0";
 
 struct Settings
 {

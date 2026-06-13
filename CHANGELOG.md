@@ -3,6 +3,13 @@
 Spatial Canvas — notable user-facing changes. Versioning is milestone-based
 (M = milestone). Dates are 2026.
 
+## 0.49.0 — Export canvas to PNG
+- **Export your canvas to a PNG** with `Ctrl+Shift+S` (saved to your Pictures
+  folder) — handy for sharing a snapshot of your workspace.
+- The new-version notice is now clickable — it opens the releases page.
+- Fix: the last view is also saved on Windows shutdown/logoff (not just on a
+  normal quit), so "Restore last view" no longer loses your spot.
+
 ## 0.48.0 — Update notifications, note search, session restore
 - **New-version notification** (opt-in, notification-only): the app checks GitHub
   on launch and tells you when a newer release exists — nothing is downloaded or

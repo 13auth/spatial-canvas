@@ -1,45 +1,52 @@
 # Changelog
 
-Spatial Canvas — kayda değer kullanıcı-yönelimli değişiklikler. Sürümleme M-kilometre
-taşı tabanlı (M = milestone). Tarihler 2026.
+Spatial Canvas — notable user-facing changes. Versioning is milestone-based
+(M = milestone). Dates are 2026.
 
-## 0.46.0 — Tuval notları + yayın hazırlığı
-- **Yapışkan notlar (M44–46):** `Ctrl+Shift+N` ile tuvale not bırak; renk (Tab),
-  sürükle, çift-tık düzenle, sağ-alt köşeden **yeniden boyutlandır**, hover-`✕` sil.
-  Notlar `notes.txt`'de kalıcı; fit/minimap/F1 ile entegre. IPC: `note:metin`.
-- Exe sürüm damgası + ikon + markalama; tek-dosya dağıtım (redist gerektirmez).
-- robmikh örnek kodu temizlendi; `package.ps1` ile sürümlü `.zip` üretimi.
+## 0.47.0 — Bilingual UI (English / Türkçe)
+- The entire UI is now **English by default**, with a **language toggle** in
+  Settings (English / Türkçe), persisted across sessions.
+- README available in English (primary) and Turkish (`README.tr.md`).
+- Versioned exe metadata and a proprietary, source-available license.
 
-## 0.42–0.45 — Workspace + keşfedilebilirlik
-- **Adlandırılmış workspace'ler (M42):** düzen profillerini kaydet/yükle
-  (`save <ad>` / `load <ad>`, IPC `save:`/`load:`).
-- Tile etiketinde exe ikonu (M41); F1 listesi + boş-tuval onboarding ipucu.
+## 0.46.0 — Canvas notes + release prep
+- **Sticky notes (M44–46):** drop notes on the canvas with `Ctrl+Shift+N`;
+  color (Tab), drag, double-click to edit, **resize** from the bottom-right
+  corner, delete via hover-`✕`. Notes persist in `notes.txt`; integrated with
+  fit / minimap / F1. IPC: `note:text`.
+- Single-file distribution (no redistributable), versioned exe stamp + icon.
 
-## 0.40.0 — Otonom geliştirme dalgası (M33–M40)
-- Keskin dock ikonları (App Paths + JUMBO), pencere blur kuralı (`rules.txt`).
-- `Ctrl+G` ızgaraya diz (Miro clean-up tarzı).
-- **Minimap** (sağ-alt kuşbakışı; viewport + yer imi noktaları; tıkla-zıpla).
-- Hover etiketi (zoom'dan bağımsız), `Shift+Ok` ile odaklı tile taşıma.
-- Komut paleti genişledi (`Ctrl+N`'e fit/grid/quit).
+## 0.42–0.45 — Workspaces + discoverability
+- **Named workspaces (M42):** save/load layout profiles (`save <name>` /
+  `load <name>`, IPC `save:`/`load:`).
+- Exe icon on tile labels (M41); F1 list + empty-canvas onboarding hint.
 
-## 0.30–0.34 — Rakip-parite (M27–M34)
-- Pinned tile kalıcılığı, pencere **opacity** kuralı (alpha blend), **vinyet** zemin.
+## 0.40.0 — Autonomous development wave (M33–M40)
+- Sharp dock icons (App Paths + JUMBO), per-window blur rule (`rules.txt`).
+- `Ctrl+G` arrange into a grid (Miro clean-up style).
+- **Minimap** (bottom-right bird's-eye; viewport + bookmark dots; click-to-jump).
+- Hover label (zoom-independent), `Shift+Arrow` to move the focused tile.
+- Command palette expanded (`Ctrl+N` accepts fit/grid/quit).
+
+## 0.30–0.34 — Competitive parity (M27–M34)
+- Pinned-tile persistence, per-window **opacity** rule (alpha blend), **vignette**
+  background.
 - **IPC / scripting** (named pipe: fit/quit/pull/launch/search/bookmark).
-- Yatay touchpad pan; box-blur pencere kuralı.
+- Horizontal touchpad pan; box-blur window rule.
 
-## 0.16–0.26 — Sağlamlık + UX (M16–M26)
-- Tek-örnek, çökme sigortası, device-lost tam reinit, çözünürlük/DPI canlı.
-- Toast HUD, ESC bağlam merdiveni, ilk-açılış kartı + **F1** kısayol listesi.
-- Klavye navigasyonu (ok/Enter/Tab-MRU), ekrana-sabit HUD tile (`Ctrl+P`).
-- Uygulama başlatıcı (`Ctrl+N` palet + sağ-kenar dock, gerçek ikonlu CRUD).
-- Performans: ızgara bitmap brush, fırça cache, boşta GPU kısma.
+## 0.16–0.26 — Resilience + UX (M16–M26)
+- Single instance, crash insurance, full device-lost reinit, live resolution/DPI.
+- Toast HUD, ESC context ladder, first-launch card + **F1** shortcut list.
+- Keyboard navigation (arrows/Enter/Tab-MRU), screen-pinned HUD tile (`Ctrl+P`).
+- App launcher (`Ctrl+N` palette + right-edge dock with real icons, CRUD).
+- Performance: grid bitmap brush, brush cache, idle GPU throttling.
 
-## 0.11–0.15 — Tuval kabuğu (M11–M15)
-- Görev çubuğu gizleme, üst-orta Ara butonu, `Ctrl+C/V` çoğaltma.
-- Marquee çoklu seçim + Delete; momentum pan, kenar autopan, nokta ızgara.
-- Yer imleri (`Ctrl+Shift+1–4` / `Ctrl+1–4`), alt-kenar dock, kenar yapışması,
-  pencere kuralları (`rules.txt`).
+## 0.11–0.15 — Canvas shell (M11–M15)
+- Taskbar hiding, top-center Search button, `Ctrl+C/V` duplication.
+- Marquee multi-select + Delete; momentum pan, edge auto-pan, dot grid.
+- Bookmarks (`Ctrl+Shift+1–4` / `Ctrl+1–4`), bottom-edge dock, edge snapping,
+  window rules (`rules.txt`).
 
-## 0.1–0.10 — Çekirdek (M0–M10)
-- WGC yakalama → D3D11 doku; sonsuz zoom/pan tuval; **park & swap** (gerçek
-  HWND'ye dalış, input simülasyonu yok); özelleştirilebilir kısayollar.
+## 0.1–0.10 — Core (M0–M10)
+- WGC capture → D3D11 texture; infinite zoom/pan canvas; **park & swap** (dive
+  into the real HWND, no input simulation); customizable shortcuts.

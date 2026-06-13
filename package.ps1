@@ -32,6 +32,7 @@ New-Item -ItemType Directory -Force -Path $stage | Out-Null
 Copy-Item $exe (Join-Path $stage "SpatialCanvas.exe")
 Copy-Item (Join-Path $root "LICENSE") $stage
 Copy-Item (Join-Path $root "README.md") $stage
+Copy-Item (Join-Path $root "README.tr.md") $stage
 Copy-Item (Join-Path $root "CHANGELOG.md") $stage
 
 Write-Host "[3/3] Zip olusturuluyor..." -ForegroundColor Cyan

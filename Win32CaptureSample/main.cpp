@@ -11,8 +11,8 @@ int __stdcall WinMain(HINSTANCE, HINSTANCE, PSTR, int)
     if (!isCaptureSupported)
     {
         MessageBoxW(nullptr,
-            L"Bu Windows sürümünde ekran yakalama (Windows.Graphics.Capture) desteklenmiyor.\n"
-            L"Spatial Canvas Windows 10 1903+ / Windows 11 gerektirir.",
+            L"Screen capture (Windows.Graphics.Capture) is not supported on this Windows version.\n"
+            L"Spatial Canvas requires Windows 10 1903+ / Windows 11.",
             L"Spatial Canvas",
             MB_OK | MB_ICONERROR);
         return 1;

@@ -1,155 +1,161 @@
 # Spatial Canvas
 
-Canlı Windows pencerelerini sonsuz, zoom'lanabilir bir tuvale yerleştiren
-pencere yöneticisi. 3 monitör yerine (ya da 3 monitörle birlikte) tek bir
-"kuşbakışı çalışma alanı": uzaklaş, her şeyi gör; yakınlaş, gerçek pencereye
-ışınlan, çalış; başparmak tuşuyla geri çekil.
+***English** · [Türkçe](README.tr.md)*
 
-**Sürüm:** 0.46.0 (M0–M46) · **Platform:** Windows 11
-(Windows.Graphics.Capture) · **Durum:** Aktif prototip / dogfood
+A window manager that places your live Windows windows onto an infinite,
+zoomable canvas. Instead of three monitors (or alongside them), one
+"bird's-eye workspace": zoom out, see everything; zoom in, teleport into the
+real window and work; pull back with a thumb button.
 
-## Kurulum
+**Version:** 0.47.0 (M0–M47) · **Platform:** Windows 11
+(Windows.Graphics.Capture) · **Status:** Active prototype / dogfood
 
-Gereksinim: **Windows 10 1903+ / Windows 11** (ekran yakalama API'si için).
-Kurulum gerektirmez, **tek dosya**: `SpatialCanvas.exe` (statik bağlı; .NET ya
-da VC redist GEREKMEZ).
+## Install
 
-1. Son sürümün `.zip`'ini indir (Releases) → klasöre çıkar.
-2. `SpatialCanvas.exe`'yi çalıştır. Tuval açılır, açık pencerelerin yakalanır.
-3. **ESC** ile çık (her şey eski yerine döner). İlk açılışta 3 satırlık ipucu,
-   tüm kısayollar için **F1**.
+Requires **Windows 10 1903+ / Windows 11** (for the screen-capture API).
+No installation, **single file**: `SpatialCanvas.exe` (statically linked; no
+.NET or VC redistributable needed).
 
-> İmzasız sürümde Windows SmartScreen "bilinmeyen yayıncı" diyebilir →
-> *Ek bilgi → Yine de çalıştır*. (İmzalı sürüm yol haritasında.)
+1. Download the latest `.zip` (Releases) → extract to a folder.
+2. Run `SpatialCanvas.exe`. The canvas opens and captures your open windows.
+3. Press **ESC** to exit (everything returns to its place). A 3-line tip card
+   shows on first launch; press **F1** for all shortcuts.
 
-## Nasıl çalışır (mimari)
+> The unsigned build may trigger Windows SmartScreen ("unknown publisher") →
+> *More info → Run anyway*. (A signed build is on the roadmap.)
+>
+> The UI is English by default; switch to Turkish in **Settings → Language**.
 
-Girdi simülasyonu YOKTUR. Üç katman:
+## How it works (architecture)
 
-1. **Yakalama** — Her pencere için Windows.Graphics.Capture oturumu
-   (FreeThreaded FramePool, poll tabanlı, kilit yok). Kareler kalıcı
-   D3D11 dokularına kopyalanır.
-2. **Tuval** — Borderless fullscreen D3D11 swapchain; her pencere dünya
-   uzayında 1:1 piksel quad. D2D/DWrite overlay: başlık etiketleri,
-   hover vurgusu, dünyaya çakılı nokta ızgara, dock, paneller.
-3. **Park & Swap** — Pencereler ana monitörün alt kenarında 2px görünür
-   şeritte "park" eder (occlusion throttling tetiklenmez → dokular canlı
-   kalır). Zoom eşiği geçilince gerçek HWND quad'ın üzerine ışınlanır ve
-   odak alır; geri çekilince tekrar parka döner.
+There is NO input simulation. Three layers:
 
-Tuval modunda pencere TOPMOST'tur ve görev çubuğu gizlenir; bir pencereye
-dalınca normal z-düzenine iner ve görev çubuğu geri gelir.
+1. **Capture** — A Windows.Graphics.Capture session per window (FreeThreaded
+   FramePool, poll-based, lock-free). Frames are copied into persistent D3D11
+   textures.
+2. **Canvas** — A borderless fullscreen D3D11 swapchain; each window is a
+   1:1-pixel quad in world space. A D2D/DWrite overlay draws title labels,
+   hover highlight, a world-anchored dot grid, docks, and panels.
+3. **Park & Swap** — Windows "park" in a 2px visible strip at the bottom of
+   the primary monitor (so occlusion throttling never fires → textures stay
+   live). When you cross the zoom threshold, the real HWND teleports onto the
+   quad and takes focus; pull back and it returns to the park strip.
 
-## Kontroller
+In canvas mode the window is TOPMOST and the taskbar is hidden; when you dive
+into a window it drops to the normal z-order and the taskbar returns.
 
-| Eylem | Girdi |
+## Controls
+
+| Action | Input |
 |---|---|
-| Zoom (imleç odaklı) | Tekerlek |
-| Pan (momentum'lu) | Orta/sağ tuş sürükle · kenara sürükleyince otomatik pan |
-| Tile taşı (kenara yapışır) | Sol tuş sürükle · **Alt**+sürükle = yapışma kapalı |
-| Yapışık kümeyi taşı | **Shift**+sürükle |
-| Çoklu seçim | Boş alanda sürükle (marquee) · **Delete** = seçilileri çıkar |
-| Pencereye dal | Zoom eşiğini geç · çift tık · **Enter** (klavye odağı) |
-| Geri çekil (aynı manzara) | **Fare İLERİ tuşu** · Ctrl+Alt+Tekerlek-aşağı · Ctrl+Alt+Z |
-| Klavye gezinme | **Ok tuşları** (yön) · **Tab/Shift+Tab** (son kullanılan) |
-| Pencere ara | **Ctrl+F** · üst-orta "Ara" butonu |
-| Uygulama başlat | **Ctrl+N** (palet: yaz+Enter / 1-9 / tıkla) |
-| Pencere çoğalt | **Ctrl+C** / **Ctrl+V** (imleç konumuna) |
-| Tuvale sabitle (HUD) | **Ctrl+P** (pan/zoom'u yok sayar; tekrar = çöz) |
-| Yer imi | **Ctrl+Shift+1–4** kaydet · **Ctrl+1–4** git |
-| Tümünü / seçimi sığdır | **F** · Shift+1 / Shift+2 |
-| Pencereleri ızgaraya diz | **Ctrl+G** (Miro "clean up" tarzı) |
-| Klavye: tile odağı / taşı | **Ok** (odak) · **Shift+Ok** (taşı) |
-| Minimap (kuşbakışı) | Sağ-alt köşe · tıkla = oraya zıpla (panelden kapatılır) |
-| Yapışkan not (anotasyon) | **Ctrl+Shift+N** = imleçte not · yaz, **Tab**=renk, **Enter/Esc**=bitir |
-| Notu taşı / düzenle / boyutla / sil | Sol sürükle · çift tık = düzenle · sağ-alt köşe = boyutlandır · hover **✕** = sil |
-| Tüm kısayollar | **F1** |
-| Pencereyi **kapat** (uygulamayı) | Hover → sağ üstte **✕** (kendi kaydet-diyaloğu çıkar) |
-| Ayarlar paneli | Sol üst **⚙** veya S |
-| Çalışan pencere dock'u | İmleci ana monitör **alt** kenarına götür → tıkla = o pencereye uç |
-| Uygulama dock'u (başlatıcı) | İmleci **sağ** kenara götür → sol tık = başlat · **+** = ekle · **sağ tık** = kaldır |
-| Çıkış (her şey eski yerine döner) | ESC (önce açık paneli/seçimi kapatır) |
+| Zoom (cursor-focused) | Wheel |
+| Pan (with momentum) | Middle/right-drag · auto-pan when dragging to an edge |
+| Move tile (snaps to edges) | Left-drag · **Alt**+drag = snapping off |
+| Move snapped cluster | **Shift**+drag |
+| Multi-select | Drag empty space (marquee) · **Delete** = remove selected |
+| Dive into a window | Cross zoom threshold · double-click · **Enter** (keyboard focus) |
+| Pull back (same view) | **Mouse FORWARD button** · Ctrl+Alt+Wheel-down · Ctrl+Alt+Z |
+| Keyboard navigation | **Arrow keys** (direction) · **Tab/Shift+Tab** (most recent) |
+| Search windows | **Ctrl+F** · top-center "Search" button |
+| Launch app | **Ctrl+N** (palette: type+Enter / 1-9 / click) |
+| Duplicate window | **Ctrl+C** / **Ctrl+V** (to cursor position) |
+| Pin to screen (HUD) | **Ctrl+P** (ignores pan/zoom; again = unpin) |
+| Bookmark | **Ctrl+Shift+1–4** save · **Ctrl+1–4** go |
+| Fit all / selection | **F** · Shift+1 / Shift+2 |
+| Arrange windows into a grid | **Ctrl+G** (Miro "clean up" style) |
+| Keyboard: tile focus / move | **Arrow** (focus) · **Shift+Arrow** (move) |
+| Minimap (bird's-eye) | Bottom-right corner · click = jump there (toggle in panel) |
+| Sticky note (annotation) | **Ctrl+Shift+N** = note at cursor · type, **Tab**=color, **Enter/Esc**=done |
+| Move / edit / resize / delete note | Left-drag · double-click = edit · bottom-right corner = resize · hover **✕** = delete |
+| All shortcuts | **F1** |
+| **Close** a window (the app) | Hover → **✕** top-right (the app's own save dialog appears) |
+| Settings panel | Top-left **⚙** or S |
+| Running-window dock | Move cursor to **bottom** edge of primary monitor → click = fly to that window |
+| App dock (launcher) | Move cursor to **right** edge → left-click = launch · **+** = add · **right-click** = remove |
+| Exit (everything returns) | ESC (first closes any open panel/selection) |
 
-Tüm kısayollar Ayarlar panelinin **Kısayollar** sekmesinden (klavye VEYA
-fare tuşuna) yeniden atanabilir. İlk açılışta 3 satırlık ipucu kartı gösterilir.
+All shortcuts can be reassigned (to a keyboard OR mouse button) from the
+**Shortcuts** tab of the Settings panel. A 3-line tip card shows on first launch.
 
-## Uygulama başlatıcı
+## App launcher
 
-Tuvalden çıkmadan uygulama açar. İki yol:
+Opens apps without leaving the canvas. Two ways:
 
-- **Sağ kenar dock'u** (önerilen): İmleci ekranın sağ kenarına götür → kayıtlı
-  uygulamalar gerçek ikonlarıyla dikey bir dock olarak açılır; ikona tıkla =
-  başlat. En alttaki **+** butonu bir dosya seçici açar, seçtiğin `.exe`
-  anında dock'a eklenir (ve `launcher.txt`'ye kaydedilir — elle düzenleme gerekmez).
-- **Ctrl+N paleti**: Serbest komut yaz (`cmd`, `notepad`, `chrome --new-window`,
-  tırnaklı tam yol) ya da kayıtlı kısayoldan 1-9 / tıkla ile seç.
+- **Right-edge dock** (recommended): move the cursor to the right edge of the
+  screen → your saved apps open as a vertical dock with real icons; click an
+  icon to launch. The **+** button at the bottom opens a file picker; the
+  `.exe` you pick is added to the dock instantly (and saved to `launcher.txt`
+  — no manual editing).
+- **Ctrl+N palette**: type a free command (`cmd`, `notepad`,
+  `chrome --new-window`, a quoted full path) or pick a saved shortcut with
+  1-9 / click.
 
-Başlatılan pencere imleç konumunda tuvale düşer. Kısayollar
-`%APPDATA%\SpatialCanvas\launcher.txt`'de `Etiket|program|argümanlar`
-biçiminde tutulur (ilk açılışta örnek şablon oluşur).
+The launched window lands on the canvas at the cursor position. Shortcuts are
+stored in `%APPDATA%\SpatialCanvas\launcher.txt` as `Label|program|arguments`
+(a sample template is created on first launch).
 
-## Ayarlar paneli
+## Settings panel
 
-Yakalama FPS (15/30/60), animasyon hızı, başlık etiketleri, vurgu
-çerçevesi, dalış eşiği, maksimum pencere sayısı, arka plan tonu, nokta
-ızgara, Windows ile başlat, tuval alanı (ana ekran / tüm monitörler).
-Kalıcılık: `%APPDATA%\SpatialCanvas\settings.txt`.
+Language (English/Türkçe), capture FPS (15/30/60), animation speed, title
+labels, hover frame, dive threshold, max window count, background tone, dot
+grid, start with Windows, canvas area (primary screen / all monitors).
+Persisted in `%APPDATA%\SpatialCanvas\settings.txt`.
 
-## Dayanıklılık
+## Resilience
 
-- **Tek örnek:** Mutex; ikinci başlatma var olan tuvali öne getirir.
-- **Çökme sigortası:** Park durumu `pending_restore.txt`'ye yazılır; üstüne
-  bir çökme filtresi (`SetUnhandledExceptionFilter`) anında görev çubuğunu
-  geri gösterir ve pencereleri parktan çıkarır. Bir sonraki açılış da mahsur
-  pencereleri (HWND/exe/başlık eşleşmesiyle) eski yerlerine koyar.
-- **Cihaz kaybı:** TDR / sürücü güncellemesi / uyku-uyanma → D3D/D2D/WGC tam
-  yeniden kurulur; başarısızsa pencereler restore edilip temiz çıkılır
-  (hiçbir pencere 2px şeritte yetim kalmaz).
-- **Çözünürlük/DPI değişimi:** Geometri, swapchain ve park şeridi canlı
-  yeniden kurulur.
-- **Oturum sonu:** `WM_QUERYENDSESSION`/`WM_ENDSESSION` → pencereler eski
-  yerine döner, görev çubuğu geri gelir.
-- **explorer.exe yeniden başlarsa:** `TaskbarCreated` dinlenir, yeni görev
-  çubuğu tekrar gizlenir.
-- **Yaşam döngüsü:** Kapanan pencerelerin tile'ları temizlenir; yakalaması
-  ölen ama yaşayan pencere parkta bırakılmaz, yerine döndürülür. Yeni açılan
-  pencereler tuval modundayken otomatik tile olur.
-- **Layout kalıcılığı:** Tile yerleşimi exe bazlı `layout.txt`'de saklanır.
+- **Single instance:** a mutex; a second launch brings the existing canvas to front.
+- **Crash insurance:** park state is written to `pending_restore.txt`; on top of
+  that a crash filter (`SetUnhandledExceptionFilter`) instantly re-shows the
+  taskbar and un-parks windows. The next launch also restores stranded windows
+  (matched by HWND/exe/title) to their places.
+- **Device loss:** TDR / driver update / sleep-wake → D3D/D2D/WGC fully rebuilt;
+  if that fails, windows are restored and the app exits cleanly (no window is
+  left orphaned in the 2px strip).
+- **Resolution/DPI change:** geometry, swapchain, and the park strip are rebuilt live.
+- **Session end:** `WM_QUERYENDSESSION`/`WM_ENDSESSION` → windows return to place,
+  taskbar comes back.
+- **If explorer.exe restarts:** `TaskbarCreated` is observed and the new taskbar
+  is hidden again.
+- **Lifecycle:** tiles of closed windows are cleaned up; a window whose capture
+  died but is still alive isn't left parked — it's returned. Newly opened windows
+  auto-tile while in canvas mode.
+- **Layout persistence:** tile placement is stored per-exe in `layout.txt`.
 
-## Performans
+## Performance
 
-Boşta GPU yakmaz: ana döngü dirty-flag + `MsgWaitForMultipleObjectsEx`
-ile yalnızca bir şey değiştiğinde çizer. Nokta ızgara tek wrap-mode bitmap
-fırçayla çizilir; overlay fırçaları cache'lidir.
+Doesn't burn the GPU when idle: the main loop draws only when something changes
+(dirty flag + `MsgWaitForMultipleObjectsEx`). The dot grid is drawn with a single
+wrap-mode bitmap brush; overlay brushes are cached.
 
-## Pencere kuralları
+## Window rules
 
-`%APPDATA%\SpatialCanvas\rules.txt` (elle düzenlenir): `exclude=uygulama.exe`
-satırı o exe'yi hiç yakalamaz (ilk açılışta açıklamalı şablon oluşur).
+`%APPDATA%\SpatialCanvas\rules.txt` (hand-edited): an `exclude=app.exe` line
+never captures that exe (a commented template is created on first launch).
 
-## Derleme
+## Build
 
-Gereksinimler: VS 2022 (MSVC v143), Windows SDK 10.0.26100.
+Requirements: VS 2022 (MSVC v143), Windows SDK 10.0.26100.
 
 ```
 MSBuild Win32CaptureSample.sln -p:Configuration=Release -p:Platform=x64 -m
 ```
 
-Çıktı: `x64\Release\SpatialCanvas.exe`. Tüm uygulama kodu tek modülde:
-`Win32CaptureSample/Canvas.cpp` (~2900 satır, giriş `RunCanvasApp()`).
+Output: `x64\Release\SpatialCanvas.exe`. The entire app is in a single module:
+`Win32CaptureSample/Canvas.cpp` (entry point `RunCanvasApp()`).
 
-## Lisans
+## License
 
-Kaynak-görünür, **özel (proprietary)** lisans — açık kaynak değildir.
-Herkes ücretsiz **indirip kullanabilir** (kişisel / eğitim / kurum-içi).
-Yazılı izin olmadan **çoğaltmak, kopyalamak, yeniden dağıtmak ve ticari
-olarak sunmak yasaktır.** Ayrıntılar: [LICENSE](LICENSE).
+Source-available, **proprietary** license — not open source. Anyone may
+**download and use** it for free (personal / educational / internal use).
+**Copying, reproducing, redistributing, and offering it commercially is
+prohibited without written permission.** Details: [LICENSE](LICENSE).
 
-## Teşekkür
+## Acknowledgments
 
-Yakalama altyapısı [robmikh/Win32CaptureSample](https://github.com/robmikh/Win32CaptureSample)
-(MIT) yapısından yola çıkar; derleme `robmikh.common` (MIT, NuGet) paketini
-kullanır. Bu üçüncü taraf bileşenler kendi lisanslarındadır.
+The capture infrastructure builds on the structure of
+[robmikh/Win32CaptureSample](https://github.com/robmikh/Win32CaptureSample)
+(MIT); the build uses the `robmikh.common` (MIT, NuGet) package. These
+third-party components remain under their respective licenses.
 
 ---
 © 2026 Batuhan Demirbilek · 13auth

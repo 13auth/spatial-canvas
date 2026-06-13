@@ -107,6 +107,7 @@ struct Key { int vk = 0; int mods = 0; }; // mods: 1=Ctrl 2=Alt 4=Shift
 
 struct Settings
 {
+    int lang = 0;           // M47: 0 English (varsayilan), 1 Turkce
     int fpsCap = 30;        // 15 / 30 / 60
     int animSpeed = 1;      // 0 yavaş, 1 normal, 2 hızlı
     bool labels = true;     // başlık etiketleri
@@ -284,6 +285,14 @@ namespace
     // M17: geçici bildirim (toast) - eylem geri bildirimi
     std::wstring g_toast;
     ULONGLONG g_toastTick = 0;
+}
+
+// M47: i18n - g_set.lang'a gore EN/TR string sec (0=English varsayilan, 1=Turkce).
+// Kullanim: TL(L"English text", L"Turkce metin"). Birlestirmede ilk parca string'e
+// donusur: TL(a,b)+std::to_wstring(x)+TL(c,d) calisir (std operator+(const wchar_t*, wstring)).
+static inline const wchar_t* TL(const wchar_t* en, const wchar_t* tr)
+{
+    return g_set.lang == 1 ? tr : en;
 }
 
 // M17: toast göster - 1.6sn görünür, son 400ms'de söner (DrawOverlay çizer)
@@ -704,9 +713,9 @@ static void ApplyCanvasSpan()
 static std::wstring KeyName(int vk)
 {
     if (vk == VK_ESCAPE) return L"ESC";
-    if (vk == VK_MBUTTON) return L"Orta tık";
-    if (vk == VK_XBUTTON1) return L"Fare Geri";
-    if (vk == VK_XBUTTON2) return L"Fare İleri";
+    if (vk == VK_MBUTTON) return TL(L"Middle click", L"Orta tık");
+    if (vk == VK_XBUTTON1) return TL(L"Mouse Back", L"Fare Geri");
+    if (vk == VK_XBUTTON2) return TL(L"Mouse Fwd", L"Fare İleri");
     UINT sc = MapVirtualKeyW(vk, MAPVK_VK_TO_VSC);
     LONG l = (LONG)(sc << 16);
     if (vk == VK_LEFT || vk == VK_RIGHT || vk == VK_UP || vk == VK_DOWN ||
@@ -731,24 +740,25 @@ static std::wstring RowLabel(int id)
 {
     switch (id)
     {
-    case 0: return L"Yakalama FPS";
-    case 1: return L"Animasyon hızı";
-    case 2: return L"Başlık etiketleri";
-    case 3: return L"Vurgu çerçevesi";
-    case 4: return L"Dalış eşiği";
-    case 5: return L"Maks. pencere";
-    case 6: return L"Arka plan";
-    case 7: return L"Windows ile başlat";
-    case 8: return L"Tuval alanı";
-    case 9: return L"Nokta ızgara";
-    case 10: return L"Minimap";
-    case 101: return L"Geri çekil";
-    case 102: return L"Panel aç/kapa";
-    case 103: return L"Seçimi/tümünü sığdır";
-    case 104: return L"Global zoom tuşu";
-    case 105: return L"Çıkış";
-    case 106: return L"Pencere ara";
-    case 107: return L"Uygulama başlat";
+    case 11: return TL(L"Language", L"Dil"); // M47
+    case 0: return TL(L"Capture FPS", L"Yakalama FPS");
+    case 1: return TL(L"Animation speed", L"Animasyon hızı");
+    case 2: return TL(L"Title labels", L"Başlık etiketleri");
+    case 3: return TL(L"Hover frame", L"Vurgu çerçevesi");
+    case 4: return TL(L"Dive threshold", L"Dalış eşiği");
+    case 5: return TL(L"Max windows", L"Maks. pencere");
+    case 6: return TL(L"Background", L"Arka plan");
+    case 7: return TL(L"Start with Windows", L"Windows ile başlat");
+    case 8: return TL(L"Canvas area", L"Tuval alanı");
+    case 9: return TL(L"Dot grid", L"Nokta ızgara");
+    case 10: return TL(L"Minimap", L"Minimap");
+    case 101: return TL(L"Pull back", L"Geri çekil");
+    case 102: return TL(L"Toggle panel", L"Panel aç/kapa");
+    case 103: return TL(L"Fit selection/all", L"Seçimi/tümünü sığdır");
+    case 104: return TL(L"Global zoom key", L"Global zoom tuşu");
+    case 105: return TL(L"Exit", L"Çıkış");
+    case 106: return TL(L"Search windows", L"Pencere ara");
+    case 107: return TL(L"Launch app", L"Uygulama başlat");
     }
     return L"";
 }
@@ -757,29 +767,30 @@ static std::wstring RowValue(int id)
 {
     switch (id)
     {
+    case 11: return g_set.lang == 1 ? L"Türkçe" : L"English"; // M47
     case 0: return std::to_wstring(g_set.fpsCap);
-    case 1: return g_set.animSpeed == 0 ? L"Yavaş" : (g_set.animSpeed == 1 ? L"Normal" : L"Hızlı");
-    case 2: return g_set.labels ? L"Açık" : L"Kapalı";
-    case 3: return g_set.hover ? L"Açık" : L"Kapalı";
-    case 4: return g_set.diveZoom < 0.9f ? L"Erken" : L"Normal";
+    case 1: return g_set.animSpeed == 0 ? TL(L"Slow", L"Yavaş") : (g_set.animSpeed == 1 ? TL(L"Normal", L"Normal") : TL(L"Fast", L"Hızlı"));
+    case 2: return g_set.labels ? TL(L"On", L"Açık") : TL(L"Off", L"Kapalı");
+    case 3: return g_set.hover ? TL(L"On", L"Açık") : TL(L"Off", L"Kapalı");
+    case 4: return g_set.diveZoom < 0.9f ? TL(L"Early", L"Erken") : TL(L"Normal", L"Normal");
     case 5: return std::to_wstring(g_set.maxTiles);
-    case 6: return g_set.bgPreset == 0 ? L"Koyu" : (g_set.bgPreset == 1 ? L"Gece"
-        : (g_set.bgPreset == 2 ? L"Siyah" : L"Vinyet"));
-    case 7: return g_set.autostart ? L"Açık" : L"Kapalı";
-    case 8: return g_set.canvasSpan ? L"Tümü" : L"Ana ekran";
-    case 9: return g_set.grid ? L"Açık" : L"Kapalı";
-    case 10: return g_set.minimap ? L"Açık" : L"Kapalı";
-    case 101: return g_captureRow == 101 ? L"tuşa bas…" : HotkeyName(g_set.kbPull);
-    case 102: return g_captureRow == 102 ? L"tuşa bas…" : HotkeyName(g_set.kbPanel);
-    case 103: return g_captureRow == 103 ? L"tuşa bas…" : HotkeyName(g_set.kbFit);
+    case 6: return g_set.bgPreset == 0 ? TL(L"Dark", L"Koyu") : (g_set.bgPreset == 1 ? TL(L"Night", L"Gece")
+        : (g_set.bgPreset == 2 ? TL(L"Black", L"Siyah") : TL(L"Vignette", L"Vinyet")));
+    case 7: return g_set.autostart ? TL(L"On", L"Açık") : TL(L"Off", L"Kapalı");
+    case 8: return g_set.canvasSpan ? TL(L"All", L"Tümü") : TL(L"Primary", L"Ana ekran");
+    case 9: return g_set.grid ? TL(L"On", L"Açık") : TL(L"Off", L"Kapalı");
+    case 10: return g_set.minimap ? TL(L"On", L"Açık") : TL(L"Off", L"Kapalı");
+    case 101: return g_captureRow == 101 ? TL(L"press key…", L"tuşa bas…") : HotkeyName(g_set.kbPull);
+    case 102: return g_captureRow == 102 ? TL(L"press key…", L"tuşa bas…") : HotkeyName(g_set.kbPanel);
+    case 103: return g_captureRow == 103 ? TL(L"press key…", L"tuşa bas…") : HotkeyName(g_set.kbFit);
     case 104:
     {
         static const wchar_t* M[5] = { L"Ctrl+Alt", L"Ctrl+Shift", L"Alt+Shift", L"Ctrl", L"Alt" };
         return M[g_set.wheelMod];
     }
-    case 105: return g_captureRow == 105 ? L"tuşa bas…" : HotkeyName(g_set.kbExit);
-    case 106: return g_captureRow == 106 ? L"tuşa bas…" : HotkeyName(g_set.kbSearch);
-    case 107: return g_captureRow == 107 ? L"tuşa bas…" : HotkeyName(g_set.kbLaunch);
+    case 105: return g_captureRow == 105 ? TL(L"press key…", L"tuşa bas…") : HotkeyName(g_set.kbExit);
+    case 106: return g_captureRow == 106 ? TL(L"press key…", L"tuşa bas…") : HotkeyName(g_set.kbSearch);
+    case 107: return g_captureRow == 107 ? TL(L"press key…", L"tuşa bas…") : HotkeyName(g_set.kbLaunch);
     }
     return L"";
 }
@@ -805,6 +816,7 @@ static void CycleRow(int id)
     case 8: g_set.canvasSpan = 1 - g_set.canvasSpan; ApplyCanvasSpan(); break; // M8: canlı
     case 9: g_set.grid = !g_set.grid; break; // M12
     case 10: g_set.minimap = !g_set.minimap; break; // M36
+    case 11: g_set.lang = 1 - g_set.lang; break; // M47: EN/TR
     case 104: g_set.wheelMod = (g_set.wheelMod + 1) % 5; break;
     case -10: g_panelTab = 0; g_captureRow = -1; return; // M10: sekmeler
     case -11: g_panelTab = 1; return;
@@ -879,7 +891,7 @@ static void DrawPanel(POINT cur)
     g_d2dRT->DrawLine(D2D1::Point2F(left + PANEL_W, top),
         D2D1::Point2F(left + PANEL_W, bot), g_brHover.get(), 1.0f);
     // M10: sekmeler (Ayarlar / Kısayollar)
-    static const wchar_t* TABS[2] = { L"Ayarlar", L"Kısayollar" };
+    const wchar_t* TABS[2] = { TL(L"Settings", L"Ayarlar"), TL(L"Shortcuts", L"Kısayollar") };
     float tx = left + 14;
     for (int tb = 0; tb < 2; tb++)
     {
@@ -896,10 +908,10 @@ static void DrawPanel(POINT cur)
     // satırlar (aktif sekmeye göre)
     float y = top + 116;
     const float rowH = 50;
-    static const int T0[] = { 0,1,2,3,4,5,6,7,8,9,10 };
+    static const int T0[] = { 11,0,1,2,3,4,5,6,7,8,9,10 }; // M47: Dil en üstte
     static const int T1[] = { 101,102,103,104,105,106,107 };
     const int* ids = g_panelTab ? T1 : T0;
-    int idCount = g_panelTab ? 7 : 11;
+    int idCount = g_panelTab ? 7 : 12;
     for (int idx = 0; idx < idCount; idx++)
     {
         int id = ids[idx];
@@ -930,11 +942,11 @@ static void DrawPanel(POINT cur)
     // alt bilgi
     if (g_panelTab == 1)
     {
-        std::wstring foot2 = L"F1: tüm kısayollar (sabitler dahil)"; // M20
+        std::wstring foot2 = TL(L"F1: all shortcuts (incl. fixed)", L"F1: tüm kısayollar (sabitler dahil)"); // M20
         g_d2dRT->DrawText(foot2.c_str(), (UINT32)foot2.size(), g_textFmtL.get(),
             D2D1::RectF(left + 26, bot - 80, left + PANEL_W - 14, bot - 52),
             g_brHover.get());
-        std::wstring foot = L"Çipe tıkla, klavye veya FARE tuşuna bas";
+        std::wstring foot = TL(L"Click chip, press a key or MOUSE button", L"Çipe tıkla, klavye veya FARE tuşuna bas");
         g_d2dRT->DrawText(foot.c_str(), (UINT32)foot.size(), g_textFmtL.get(),
             D2D1::RectF(left + 26, bot - 48, left + PANEL_W - 14, bot - 16),
             g_brText.get());
@@ -1047,7 +1059,7 @@ static void DrawAppDock(POINT cur)
             D2D1_ROUNDED_RECT cr{ c, 10, 10 };
             g_d2dRT->FillRoundedRectangle(cr, g_brBg.get());
             g_d2dRT->DrawRoundedRectangle(cr, g_brHover.get(), 2.0f);
-            std::wstring tt = g_launchers[i].label + L"   (sağ tık: kaldır)"; // etiket balonu (SOL)
+            std::wstring tt = g_launchers[i].label + TL(L"   (right-click: remove)", L"   (sağ tık: kaldır)"); // etiket balonu (SOL)
             if (tt.size() > 48) tt = tt.substr(0, 47) + L"…";
             float tw = 28.0f + (float)tt.size() * 7.5f;
             float tcy = (c.top + c.bottom) / 2.0f;
@@ -1361,7 +1373,7 @@ static void DrawOverlay()
         D2D1_ROUNDED_RECT brr{ br, 16, 16 };
         g_d2dRT->FillRoundedRectangle(brr, g_brBg.get());
         if (bHov) g_d2dRT->DrawRoundedRectangle(brr, g_brHover.get(), 2.0f);
-        std::wstring bt = L"Ara  " + HotkeyName(g_set.kbSearch);
+        std::wstring bt = TL(L"Search  ", L"Ara  ") + HotkeyName(g_set.kbSearch);
         g_d2dRT->DrawText(bt.c_str(), (UINT32)bt.size(), g_textFmt.get(),
             D2D1::RectF(br.left + 20, br.top + 6, br.right - 8, br.bottom),
             g_brText.get());
@@ -1375,7 +1387,7 @@ static void DrawOverlay()
         D2D1_ROUNDED_RECT rb{ box, 10, 10 };
         g_d2dRT->FillRoundedRectangle(rb, g_brPanelBg.get()); // M19: cache'li (0.93α)
         g_d2dRT->DrawRoundedRectangle(rb, g_brSel.get(), 1.5f);
-        std::wstring st = L"Ara: " + g_searchText + L"_";
+        std::wstring st = TL(L"Search: ", L"Ara: ") + g_searchText + L"_";
         if (searching)
             st += L"   (" + std::to_wstring(g_matches.empty() ? 0 : g_searchSel + 1)
                 + L"/" + std::to_wstring((int)g_matches.size()) + L")";
@@ -1403,10 +1415,13 @@ static void DrawOverlay()
     if (g_tiles.empty() && g_notes.empty() && !g_firstRun && !g_helpOpen &&
         !g_searchOpen && !g_launchOpen && g_panelA < 0.02f)
     {
-        const wchar_t* hint =
+        const wchar_t* hint = TL(
+            L"Canvas is empty\n\n"
+            L"Move to right edge → launch app   ·   Ctrl+N: launcher palette\n"
+            L"Ctrl+Shift+N: sticky note   ·   F1: all shortcuts",
             L"Tuval boş\n\n"
             L"Sağ kenara git → uygulama başlat   ·   Ctrl+N: başlatıcı palet\n"
-            L"Ctrl+Shift+N: yapışkan not   ·   F1: tüm kısayollar";
+            L"Ctrl+Shift+N: yapışkan not   ·   F1: tüm kısayollar");
         winrt::com_ptr<ID2D1SolidColorBrush> hb;
         g_d2dRT->CreateSolidColorBrush(D2D1::ColorF(0.62f, 0.66f, 0.74f, 0.55f), hb.put());
         float cx = g_uiX + g_priW / 2.0f, cy = g_uiY + g_priH / 2.0f;
@@ -1453,7 +1468,7 @@ static void DrawOverlay()
         g_d2dRT->FillRoundedRectangle(rb, g_brPanelBg.get());
         g_d2dRT->DrawRoundedRectangle(rb, g_brSel.get(), 1.5f);
         // giriş satırı
-        std::wstring st = L"Çalıştır:  " + g_launchText + L"_";
+        std::wstring st = TL(L"Run:  ", L"Çalıştır:  ") + g_launchText + L"_";
         g_d2dRT->DrawText(st.c_str(), (UINT32)st.size(), g_textFmtL.get(),
             D2D1::RectF(box.left + 18, box.top + 14, box.right - 14, box.top + 50),
             g_brText.get());
@@ -1480,7 +1495,7 @@ static void DrawOverlay()
             g_launchRows.push_back(row);
             y += rowH;
         }
-        std::wstring hint = L"Uygulama / komut (fit · grid · quit)   ·   1-9 ya da tıkla";
+        std::wstring hint = TL(L"App / command (fit · grid · quit)   ·   1-9 or click", L"Uygulama / komut (fit · grid · quit)   ·   1-9 ya da tıkla");
         g_d2dRT->DrawText(hint.c_str(), (UINT32)hint.size(), g_textFmtL.get(),
             D2D1::RectF(box.left + 18, box.bottom - 22, box.right - 14, box.bottom - 2),
             g_brHover.get());
@@ -1493,13 +1508,13 @@ static void DrawOverlay()
         D2D1_ROUNDED_RECT cr{ card, 16, 16 };
         g_d2dRT->FillRoundedRectangle(cr, g_brPanelBg.get());
         g_d2dRT->DrawRoundedRectangle(cr, g_brHover.get(), 1.5f);
-        std::wstring l1 = L"Sağ tık sürükle: kaydır   ·   Ctrl+Alt+Tekerlek: yakınlaş"
-            L"   ·   Çift tık: pencereye dal";
-        std::wstring l2 = HotkeyName(g_set.kbFit) + L": sığdır   ·   " +
-            HotkeyName(g_set.kbSearch) + L": ara   ·   " +
-            HotkeyName(g_set.kbExit) + L": çıkış";
+        std::wstring l1 = TL(L"Right-drag: pan   ·   Ctrl+Alt+Wheel: zoom   ·   Double-click: dive into window",
+            L"Sağ tık sürükle: kaydır   ·   Ctrl+Alt+Tekerlek: yakınlaş   ·   Çift tık: pencereye dal");
+        std::wstring l2 = HotkeyName(g_set.kbFit) + TL(L": fit   ·   ", L": sığdır   ·   ") +
+            HotkeyName(g_set.kbSearch) + TL(L": search   ·   ", L": ara   ·   ") +
+            HotkeyName(g_set.kbExit) + TL(L": exit", L": çıkış");
         std::wstring l3 = HotkeyName(g_set.kbLaunch) +
-            L": uygulama başlat   ·   F1: tüm kısayollar";
+            TL(L": launch app   ·   F1: all shortcuts", L": uygulama başlat   ·   F1: tüm kısayollar");
         g_d2dRT->DrawText(l1.c_str(), (UINT32)l1.size(), g_textFmt.get(),
             D2D1::RectF(card.left + 20, cy - 54, card.right - 20, cy - 24), g_brText.get());
         g_d2dRT->DrawText(l2.c_str(), (UINT32)l2.size(), g_textFmt.get(),
@@ -1516,10 +1531,11 @@ static void DrawOverlay()
             D2D1::RectF(g_uiX, g_uiY, g_uiX + g_priW, g_uiY + g_priH), dim.get());
         float lx = g_uiX + g_priW / 2.0f - 360, rx = g_uiX + g_priW / 2.0f + 20;
         float ty = g_uiY + g_priH / 2.0f - 220;
-        g_d2dRT->DrawText(L"Kısayollar", 10, g_textFmt.get(),
+        const wchar_t* helpTitle = TL(L"Shortcuts", L"Kısayollar");
+        g_d2dRT->DrawText(helpTitle, (UINT32)wcslen(helpTitle), g_textFmt.get(),
             D2D1::RectF(g_uiX, ty - 44, g_uiX + g_priW, ty - 8), g_brHover.get());
-        std::wstring colA =
-            L"Geri çekil:  " + HotkeyName(g_set.kbPull) + L"\n"
+        std::wstring colA = g_set.lang == 1 ?
+            std::wstring(L"Geri çekil:  ") + HotkeyName(g_set.kbPull) + L"\n"
             L"Panel:  " + HotkeyName(g_set.kbPanel) + L"\n"
             L"Sığdır:  " + HotkeyName(g_set.kbFit) + L"\n"
             L"Ara:  " + HotkeyName(g_set.kbSearch) + L"\n"
@@ -1527,8 +1543,18 @@ static void DrawOverlay()
             L"Çıkış:  " + HotkeyName(g_set.kbExit) + L"\n"
             L"Çift tık:  pencereye dal\n"
             L"Boş alanda sürükle:  çoklu seçim\n"
-            L"Alt kenar:  uygulama dock'u";
-        std::wstring colB =
+            L"Alt kenar:  uygulama dock'u"
+          :
+            std::wstring(L"Pull back:  ") + HotkeyName(g_set.kbPull) + L"\n"
+            L"Panel:  " + HotkeyName(g_set.kbPanel) + L"\n"
+            L"Fit:  " + HotkeyName(g_set.kbFit) + L"\n"
+            L"Search:  " + HotkeyName(g_set.kbSearch) + L"\n"
+            L"Launch app:  " + HotkeyName(g_set.kbLaunch) + L"\n"
+            L"Exit:  " + HotkeyName(g_set.kbExit) + L"\n"
+            L"Double-click:  dive into window\n"
+            L"Drag empty space:  multi-select\n"
+            L"Bottom edge:  app dock";
+        std::wstring colB = g_set.lang == 1 ?
             L"Ctrl+C / Ctrl+V:  pencere çoğalt\n"
             L"Ctrl+P:  tile'ı ekrana sabitle (HUD)\n"
             L"Ctrl+G:  pencereleri ızgaraya diz\n"
@@ -1540,7 +1566,20 @@ static void DrawOverlay()
             L"Alt+sürükle:  yapışma kapalı\n"
             L"Ok tuşları:  tile'lar arası odak · Shift+Ok: taşı\n"
             L"Shift+1 / Shift+2:  tümünü / seçimi sığdır\n"
-            L"F1 / ESC:  bu listeyi kapat";
+            L"F1 / ESC:  bu listeyi kapat"
+          :
+            L"Ctrl+C / Ctrl+V:  duplicate window\n"
+            L"Ctrl+P:  pin tile to screen (HUD)\n"
+            L"Ctrl+G:  arrange windows into grid\n"
+            L"Ctrl+Shift+N:  sticky note (Tab=color)\n"
+            L"Delete:  remove selected\n"
+            L"Ctrl+Shift+1..4:  save bookmark\n"
+            L"Ctrl+1..4:  go to bookmark\n"
+            L"Shift+drag:  move snapped cluster\n"
+            L"Alt+drag:  snapping off\n"
+            L"Arrow keys:  focus between tiles · Shift+Arrow: move\n"
+            L"Shift+1 / Shift+2:  fit all / selection\n"
+            L"F1 / ESC:  close this list";
         g_d2dRT->DrawText(colA.c_str(), (UINT32)colA.size(), g_textFmtL.get(),
             D2D1::RectF(lx, ty, lx + 340, ty + 400), g_brText.get());
         g_d2dRT->DrawText(colB.c_str(), (UINT32)colB.size(), g_textFmtL.get(),
@@ -1780,10 +1819,11 @@ static void AddLauncherViaDialog()
     OPENFILENAMEW ofn{};
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = g_hwnd;
-    ofn.lpstrFilter = L"Uygulamalar (*.exe)\0*.exe\0Tüm dosyalar (*.*)\0*.*\0";
+    ofn.lpstrFilter = TL(L"Applications (*.exe)\0*.exe\0All files (*.*)\0*.*\0",
+                         L"Uygulamalar (*.exe)\0*.exe\0Tüm dosyalar (*.*)\0*.*\0");
     ofn.lpstrFile = file;
     ofn.nMaxFile = MAX_PATH;
-    ofn.lpstrTitle = L"Dock'a eklenecek uygulamayı seç";
+    ofn.lpstrTitle = TL(L"Select an application to add to the dock", L"Dock'a eklenecek uygulamayı seç");
     ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | OFN_NOCHANGEDIR;
     LowerCanvas(); // TOPMOST tuval diyaloğu örtmesin
     BOOL ok = GetOpenFileNameW(&ofn);
@@ -1800,7 +1840,7 @@ static void AddLauncherViaDialog()
         if (o) o << label << L"|" << full << L"|\n";
     }
     LoadLaunchers(); // ikonuyla birlikte yeniden yükle
-    ShowToast(label + L" dock'a eklendi");
+    ShowToast(label + TL(L" added to dock", L" dock'a eklendi"));
 }
 
 // M26: launcher.txt'yi mevcut g_launchers'tan yeniden yaz (ekleme/kaldırma sonrası)
@@ -1822,7 +1862,7 @@ static void RemoveLauncher(int idx)
     std::wstring lbl = g_launchers[idx].label;
     g_launchers.erase(g_launchers.begin() + idx);
     SaveLaunchers();
-    ShowToast(lbl + L" dock'tan kaldırıldı");
+    ShowToast(lbl + TL(L" removed from dock", L" dock'tan kaldırıldı"));
 }
 
 static void LoadLaunchers()
@@ -1879,7 +1919,7 @@ static void RunCommand(const std::wstring& exe, const std::wstring& args, POINT 
     if (e.empty()) return;
     HINSTANCE r = ShellExecuteW(nullptr, L"open", e.c_str(),
         args.empty() ? nullptr : args.c_str(), nullptr, SW_SHOWNORMAL);
-    if ((INT_PTR)r <= 32) { ShowToast(L"Başlatılamadı: " + e); return; }
+    if ((INT_PTR)r <= 32) { ShowToast(TL(L"Couldn't launch: ", L"Başlatılamadı: ") + e); return; }
     // paste slotu için exe basename + .exe (AdoptNewWindows exe-adıyla eşler)
     std::wstring base = e;
     size_t s = base.find_last_of(L"\\/");
@@ -1889,7 +1929,7 @@ static void RunCommand(const std::wstring& exe, const std::wstring& args, POINT 
     float wx = g_cam.x + cur.x / g_cam.zoom;
     float wy = g_cam.y + cur.y / g_cam.zoom;
     g_pastePending.push_back({ base, wx, wy, GetTickCount64() });
-    ShowToast(L"Başlatılıyor: " + e);
+    ShowToast(TL(L"Launching: ", L"Başlatılıyor: ") + e);
 }
 
 // Serbest giriş veya kısayol indeksini çalıştır, paleti kapat
@@ -2063,13 +2103,13 @@ static void SaveNamedLayout(const std::wstring& name)
 {
     SaveLayout(); // güncel layout.txt'yi tazele
     CopyFileW(LayoutFilePath().c_str(), NamedLayoutPath(name).c_str(), FALSE);
-    ShowToast(L"Düzen kaydedildi: " + name);
+    ShowToast(TL(L"Layout saved: ", L"Düzen kaydedildi: ") + name);
 }
 
 static void LoadNamedLayout(const std::wstring& name)
 {
     std::wifstream f(NamedLayoutPath(name));
-    if (!f) { ShowToast(L"Düzen bulunamadı: " + name); return; }
+    if (!f) { ShowToast(TL(L"Layout not found: ", L"Düzen bulunamadı: ") + name); return; }
     struct Rec { std::wstring exe; float x, y, pw, ph; bool pin; };
     std::vector<Rec> recs;
     std::wstring line;
@@ -2117,7 +2157,7 @@ static void LoadNamedLayout(const std::wstring& name)
         }
     SaveLayout();
     FitCamera(true);
-    ShowToast(L"Düzen yüklendi: " + name + L" (" + std::to_wstring(applied) + L" pencere)");
+    ShowToast(TL(L"Layout loaded: ", L"Düzen yüklendi: ") + name + L" (" + std::to_wstring(applied) + TL(L" windows)", L" pencere)"));
 }
 
 // ---- Tile oluşturma ----
@@ -2145,6 +2185,7 @@ static void LoadSettings()
         else if (k == L"hover") g_set.hover = _wtoi(v.c_str()) != 0;
         else if (k == L"dive") g_set.diveZoom = (float)_wtof(v.c_str());
         else if (k == L"max") g_set.maxTiles = _wtoi(v.c_str());
+        else if (k == L"lang") g_set.lang = _wtoi(v.c_str()); // M47
         else if (k == L"bg") g_set.bgPreset = _wtoi(v.c_str());
         else if (k == L"grid") g_set.grid = _wtoi(v.c_str()) != 0; // M12
         else if (k == L"mmap") g_set.minimap = _wtoi(v.c_str()) != 0; // M36
@@ -2198,6 +2239,7 @@ static void LoadSettings()
     g_set.animSpeed = std::clamp(g_set.animSpeed, 0, 2);
     if (g_set.diveZoom < 0.5f || g_set.diveZoom > 1.0f) g_set.diveZoom = 0.92f;
     g_set.maxTiles = std::clamp(g_set.maxTiles, 4, 16);
+    g_set.lang = std::clamp(g_set.lang, 0, 1); // M47
     g_set.bgPreset = std::clamp(g_set.bgPreset, 0, 3); // M29
     g_set.canvasSpan = std::clamp(g_set.canvasSpan, 0, 1);
     g_set.wheelMod = std::clamp(g_set.wheelMod, 0, 4);
@@ -2208,6 +2250,7 @@ static void SaveSettings()
 {
     std::wofstream f(SettingsFilePath(), std::ios::trunc);
     if (!f) return;
+    f << L"lang=" << g_set.lang << L"\n"; // M47
     f << L"fps=" << g_set.fpsCap << L"\n";
     f << L"anim=" << g_set.animSpeed << L"\n";
     f << L"labels=" << (g_set.labels ? 1 : 0) << L"\n";
@@ -2622,7 +2665,7 @@ static void AdoptNewWindows()
         [&](const PasteSlot& s) { return nowT - s.tick > 15000; }),
         g_pastePending.end());
     if (g_pastePending.size() < slotsBefore) // M17: sessiz iptal olmasın
-        ShowToast(L"Yapıştırma zaman aşımı — uygulama yeni pencere açmadı");
+        ShowToast(TL(L"Paste timed out — app opened no new window", L"Yapıştırma zaman aşımı — uygulama yeni pencere açmadı"));
     if (g_activeTile >= 0) return; // çalışma modunda pencere kapma
     ULONGLONG now = GetTickCount64();
     if (now - g_lastAdopt < 1500) return;
@@ -2644,9 +2687,9 @@ static void AdoptNewWindows()
                 if (now - s_lastCapToast > 30000)
                 {
                     s_lastCapToast = now;
-                    ShowToast(L"Pencere sınırı dolu (" +
+                    ShowToast(TL(L"Window limit reached (", L"Pencere sınırı dolu (") +
                         std::to_wstring(g_set.maxTiles) +
-                        L") — Ayarlar > Maks. pencere");
+                        TL(L") — Settings > Max windows", L") — Ayarlar > Maks. pencere"));
                 }
                 break;
             }
@@ -2778,7 +2821,7 @@ static void HandleDeviceLost()
                     RemoveTileAt(i, false);
                 }
             }
-            ShowToast(L"Grafik cihazı yenilendi");
+            ShowToast(TL(L"Graphics device restored", L"Grafik cihazı yenilendi"));
             return;
         }
         catch (...)
@@ -3057,7 +3100,7 @@ static void TogglePin(POINT cp)
         t.wx = g_cam.x + t.px / g_cam.zoom;
         t.wy = g_cam.y + t.py / g_cam.zoom;
         SaveLayout(); // M27: pin durumu kalıcı
-        ShowToast(L"Sabitleme kaldırıldı");
+        ShowToast(TL(L"Unpinned", L"Sabitleme kaldırıldı"));
         return;
     }
     int hi = HitTile(g_cam.x + cp.x / g_cam.zoom, g_cam.y + cp.y / g_cam.zoom);
@@ -3069,7 +3112,7 @@ static void TogglePin(POINT cp)
     t.pinnedFlag = true;
     g_selSet.erase(t.source);
     SaveLayout(); // M27: pin durumu kalıcı (restart'ta geri yüklenir)
-    ShowToast(L"Tuvale sabitlendi (HUD) — Ctrl+P ile çöz");
+    ShowToast(TL(L"Pinned to screen (HUD) — Ctrl+P to unpin", L"Tuvale sabitlendi (HUD) — Ctrl+P ile çöz"));
 }
 
 // ---- M9: pencere arama + tile'a uçuş ----
@@ -3132,8 +3175,8 @@ static void CopySelection(POINT cur)
         if (hov >= 0 && !g_tiles[hov].exePath.empty())
             g_copyItems.push_back({ g_tiles[hov].exePath, g_tiles[hov].exe });
     }
-    ShowToast(g_copyItems.empty() ? L"Kopyalanacak pencere yok" // M17
-        : std::to_wstring(g_copyItems.size()) + L" pencere kopyalandı");
+    ShowToast(g_copyItems.empty() ? TL(L"No window to copy", L"Kopyalanacak pencere yok") // M17
+        : std::to_wstring(g_copyItems.size()) + TL(L" window(s) copied", L" pencere kopyalandı"));
 }
 
 static void PasteCopies(POINT cur)
@@ -3151,8 +3194,8 @@ static void PasteCopies(POINT cur)
         g_pastePending.push_back({ g_copyItems[i].exe,
             wx + (float)i * 80.0f, wy + (float)i * 80.0f, GetTickCount64() });
     }
-    ShowToast(launched ? std::to_wstring(launched) + L" uygulama başlatılıyor…"
-                       : L"Uygulama başlatılamadı"); // M17
+    ShowToast(launched ? std::to_wstring(launched) + TL(L" app(s) launching…", L" uygulama başlatılıyor…")
+                       : TL(L"Couldn't launch app", L"Uygulama başlatılamadı")); // M17
 }
 
 static void RemoveSelected()
@@ -3165,7 +3208,7 @@ static void RemoveSelected()
             n++;
         }
     g_selSet.clear();
-    if (n) ShowToast(std::to_wstring(n) + L" pencere bırakıldı"); // M17
+    if (n) ShowToast(std::to_wstring(n) + TL(L" window(s) removed", L" pencere bırakıldı")); // M17
 }
 
 // M35: dağınık tile'ları düzgün ızgaraya diz (Ctrl+G) - Miro "clean up" tarzı.
@@ -3189,7 +3232,7 @@ static void ArrangeGrid()
     }
     SaveLayout();
     FitCamera(true);
-    ShowToast(std::to_wstring((int)idx.size()) + L" pencere ızgaraya dizildi");
+    ShowToast(std::to_wstring((int)idx.size()) + TL(L" windows arranged into grid", L" pencere ızgaraya dizildi"));
 }
 
 // M14: sürüklenen tile yakın kenarlara yapışır (Alt basılıyken serbest).
@@ -3366,7 +3409,7 @@ static void ProcessIpcCommand(const std::wstring& cmd)
         if (nt.text.size() > 280) nt.text.resize(280);
         g_notes.push_back(nt);
         SaveNotes();
-        ShowToast(L"Not eklendi");
+        ShowToast(TL(L"Note added", L"Not eklendi"));
     }
 }
 
@@ -4054,7 +4097,7 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             n.wy = g_cam.y + cur.y / g_cam.zoom - NOTE_H / 2;
             g_notes.push_back(n);
             g_editNote = (int)g_notes.size() - 1;
-            ShowToast(L"Not: yaz, Tab=renk, Enter=bitir");
+            ShowToast(TL(L"Note: type, Tab=color, Enter=done", L"Not: yaz, Tab=renk, Enter=bitir"));
             return 0;
         }
         // M13: tuval yer imleri - Ctrl+Shift+1..4 kaydet, Ctrl+1..4 zıpla
@@ -4065,7 +4108,7 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             {
                 g_anchors[ai] = { g_camT.x, g_camT.y, g_camT.zoom, true };
                 SaveSettings();
-                ShowToast(L"Yer imi " + std::to_wstring(ai + 1) + L" kaydedildi");
+                ShowToast(TL(L"Bookmark ", L"Yer imi ") + std::to_wstring(ai + 1) + TL(L" saved", L" kaydedildi"));
             }
             else if (g_anchors[ai].set)
             {
@@ -4079,8 +4122,8 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
                 if (g_camT.zoom < 0.75f) g_swapArmed = true;
             }
             else // M17: boş yer imine zıplama sessiz kalmasın
-                ShowToast(L"Yer imi " + std::to_wstring(ai + 1) +
-                    L" boş — Ctrl+Shift+" + std::to_wstring(ai + 1) + L" ile kaydet");
+                ShowToast(TL(L"Bookmark ", L"Yer imi ") + std::to_wstring(ai + 1) +
+                    TL(L" empty — save with Ctrl+Shift+", L" boş — Ctrl+Shift+") + std::to_wstring(ai + 1) + TL(L"", L" ile kaydet"));
             return 0;
         }
         if (!ExecuteBoundAction(vk, mods))
@@ -4227,7 +4270,7 @@ int RunCanvasApp()
     CreateTiles();
     if (g_tiles.empty())
     {
-        MessageBoxW(nullptr, L"Yakalanacak pencere bulunamadı.",
+        MessageBoxW(nullptr, TL(L"No window found to capture.", L"Yakalanacak pencere bulunamadı."),
             L"Spatial Canvas", MB_OK | MB_ICONWARNING);
         return 1;
     }

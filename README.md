@@ -98,10 +98,15 @@ stored in `%APPDATA%\SpatialCanvas\launcher.txt` as `Label|program|arguments`
 
 ## Settings panel
 
-Language (English/Türkçe), capture FPS (15/30/60), animation speed, title
-labels, hover frame, dive threshold, max window count, background tone, dot
-grid, start with Windows, canvas area (primary screen / all monitors).
+Language (English/Türkçe), update check, capture FPS (15/30/60), animation
+speed, title labels, hover frame, dive threshold, max window count, background
+tone, dot grid, start with Windows, canvas area (primary screen / all monitors).
 Persisted in `%APPDATA%\SpatialCanvas\settings.txt`.
+
+> **Update check** (on by default) fetches a small version file from GitHub on
+> launch and shows a notification if a newer release exists — notification only,
+> nothing is downloaded or installed. Turn it off in Settings if you prefer no
+> network calls.
 
 ## Resilience
 

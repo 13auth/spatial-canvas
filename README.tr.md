@@ -94,10 +94,14 @@ biçiminde tutulur (ilk açılışta örnek şablon oluşur).
 
 ## Ayarlar paneli
 
-Yakalama FPS (15/30/60), animasyon hızı, başlık etiketleri, vurgu
-çerçevesi, dalış eşiği, maksimum pencere sayısı, arka plan tonu, nokta
-ızgara, Windows ile başlat, tuval alanı (ana ekran / tüm monitörler).
-Kalıcılık: `%APPDATA%\SpatialCanvas\settings.txt`.
+Dil (English/Türkçe), güncelleme kontrolü, yakalama FPS (15/30/60), animasyon
+hızı, başlık etiketleri, vurgu çerçevesi, dalış eşiği, maksimum pencere sayısı,
+arka plan tonu, nokta ızgara, Windows ile başlat, tuval alanı (ana ekran / tüm
+monitörler). Kalıcılık: `%APPDATA%\SpatialCanvas\settings.txt`.
+
+> **Güncelleme kontrolü** (varsayılan açık) açılışta GitHub'dan küçük bir sürüm
+> dosyası çeker ve yeni sürüm varsa bildirim gösterir — sadece bildirim, hiçbir
+> şey indirilmez/kurulmaz. Ağ çağrısı istemiyorsan Ayarlar'dan kapat.
 
 ## Dayanıklılık
 

@@ -19,6 +19,8 @@
 #include <thread>
 #include <unordered_map>
 #include <mutex>
+#include <wininet.h>             // M48: yeni-sürüm bildirimi (HTTP GET)
+#pragma comment(lib, "wininet.lib")
 #include <windows.graphics.capture.interop.h>
 #include <windows.graphics.directx.direct3d11.interop.h>
 #pragma comment(lib, "d3dcompiler.lib")
@@ -105,9 +107,15 @@ struct Tile
 // ---- M5: Ayarlar ----
 struct Key { int vk = 0; int mods = 0; }; // mods: 1=Ctrl 2=Alt 4=Shift
 
+// M48: uygulama sürümü (app.rc VERSIONINFO ile SENKRON tut - RELEASE.md sürüm listesinde)
+constexpr const wchar_t* APP_VERSION = L"0.47.0";
+
 struct Settings
 {
     int lang = 0;           // M47: 0 English (varsayilan), 1 Turkce
+    bool updateCheck = true; // M48: açılışta yeni-sürüm kontrolü (sadece bildirim)
+    // M48: sürüm feed'i (raw VERSION dosyası, içerik "0.47.0"). HTTP/HTTPS (WinINet).
+    std::wstring updateUrl = L"https://raw.githubusercontent.com/13auth/spatial-canvas/main/VERSION";
     int fpsCap = 30;        // 15 / 30 / 60
     int animSpeed = 1;      // 0 yavaş, 1 normal, 2 hızlı
     bool labels = true;     // başlık etiketleri
@@ -278,6 +286,10 @@ namespace
     constexpr UINT MSG_IPC = WM_APP + 3;       // M30: named pipe komutu geldi
     std::vector<std::wstring> g_ipcQueue;      // M30: pipe thread → ana thread
     std::mutex g_ipcMutex;
+    constexpr UINT MSG_UPDATE = WM_APP + 4;    // M48: yeni sürüm bulundu (thread → ana)
+    std::wstring g_updateVer;                  // M48: feed'deki yeni sürüm (boş=yok)
+    std::mutex g_updateMutex;
+    bool g_updateAvail = false;                // M48: kalıcı HUD ipucu için
     constexpr int HOTKEY_TOGGLE = 1;
     UINT g_msgTaskbarCreated = 0;   // M16: explorer yeniden başlama yayını
     bool g_geomDirty = false;       // M18: çözünürlük/DPI değişti, yeniden kur
@@ -741,6 +753,7 @@ static std::wstring RowLabel(int id)
     switch (id)
     {
     case 11: return TL(L"Language", L"Dil"); // M47
+    case 12: return TL(L"Update check", L"Güncelleme kontrolü"); // M48
     case 0: return TL(L"Capture FPS", L"Yakalama FPS");
     case 1: return TL(L"Animation speed", L"Animasyon hızı");
     case 2: return TL(L"Title labels", L"Başlık etiketleri");
@@ -768,6 +781,8 @@ static std::wstring RowValue(int id)
     switch (id)
     {
     case 11: return g_set.lang == 1 ? L"Türkçe" : L"English"; // M47
+    case 12: return g_updateAvail ? (L"v" + g_updateVer + TL(L" available!", L" mevcut!")) // M48
+        : (g_set.updateCheck ? TL(L"On", L"Açık") : TL(L"Off", L"Kapalı"));
     case 0: return std::to_wstring(g_set.fpsCap);
     case 1: return g_set.animSpeed == 0 ? TL(L"Slow", L"Yavaş") : (g_set.animSpeed == 1 ? TL(L"Normal", L"Normal") : TL(L"Fast", L"Hızlı"));
     case 2: return g_set.labels ? TL(L"On", L"Açık") : TL(L"Off", L"Kapalı");
@@ -817,6 +832,7 @@ static void CycleRow(int id)
     case 9: g_set.grid = !g_set.grid; break; // M12
     case 10: g_set.minimap = !g_set.minimap; break; // M36
     case 11: g_set.lang = 1 - g_set.lang; break; // M47: EN/TR
+    case 12: g_set.updateCheck = !g_set.updateCheck; break; // M48
     case 104: g_set.wheelMod = (g_set.wheelMod + 1) % 5; break;
     case -10: g_panelTab = 0; g_captureRow = -1; return; // M10: sekmeler
     case -11: g_panelTab = 1; return;
@@ -881,6 +897,18 @@ static void DrawPanel(POINT cur)
     g_d2dRT->FillRoundedRectangle(gear, g_brBg.get());
     if (gearHov) g_d2dRT->DrawRoundedRectangle(gear, g_brHover.get(), 2.0f);
     g_d2dRT->DrawText(L"\u2699", 1, g_textFmt.get(), gear.rect, g_brText.get());
+    // M48: yeni s\u00fcr\u00fcm g\u00f6stergesi (kal\u0131c\u0131 amber pill, di\u015flinin sa\u011f\u0131nda - toast ka\u00e7\u0131r\u0131l\u0131rsa)
+    if (g_updateAvail)
+    {
+        std::wstring ut;
+        { std::lock_guard<std::mutex> lk(g_updateMutex); ut = L"\u2191 v" + g_updateVer; }
+        float pw = 26.0f + (float)ut.size() * 8.5f;
+        D2D1_RECT_F up = D2D1::RectF(ux + 58, uy + 14, ux + 58 + pw, uy + 50);
+        D2D1_ROUNDED_RECT upr{ up, 9, 9 };
+        g_d2dRT->FillRoundedRectangle(upr, g_brBg.get());
+        g_d2dRT->DrawRoundedRectangle(upr, g_brSel.get(), 1.5f);
+        g_d2dRT->DrawText(ut.c_str(), (UINT32)ut.size(), g_textFmt.get(), up, g_brSel.get());
+    }
 
     g_panelRows.clear();
     if (g_panelA < 0.01f) return;
@@ -908,10 +936,10 @@ static void DrawPanel(POINT cur)
     // satırlar (aktif sekmeye göre)
     float y = top + 116;
     const float rowH = 50;
-    static const int T0[] = { 11,0,1,2,3,4,5,6,7,8,9,10 }; // M47: Dil en üstte
+    static const int T0[] = { 11,12,0,1,2,3,4,5,6,7,8,9,10 }; // M47/M48: Dil + Güncelleme en üstte
     static const int T1[] = { 101,102,103,104,105,106,107 };
     const int* ids = g_panelTab ? T1 : T0;
-    int idCount = g_panelTab ? 7 : 12;
+    int idCount = g_panelTab ? 7 : 13;
     for (int idx = 0; idx < idCount; idx++)
     {
         int id = ids[idx];
@@ -2186,6 +2214,8 @@ static void LoadSettings()
         else if (k == L"dive") g_set.diveZoom = (float)_wtof(v.c_str());
         else if (k == L"max") g_set.maxTiles = _wtoi(v.c_str());
         else if (k == L"lang") g_set.lang = _wtoi(v.c_str()); // M47
+        else if (k == L"updchk") g_set.updateCheck = _wtoi(v.c_str()) != 0; // M48
+        else if (k == L"updurl") g_set.updateUrl = v; // M48 (test/override)
         else if (k == L"bg") g_set.bgPreset = _wtoi(v.c_str());
         else if (k == L"grid") g_set.grid = _wtoi(v.c_str()) != 0; // M12
         else if (k == L"mmap") g_set.minimap = _wtoi(v.c_str()) != 0; // M36
@@ -2251,6 +2281,8 @@ static void SaveSettings()
     std::wofstream f(SettingsFilePath(), std::ios::trunc);
     if (!f) return;
     f << L"lang=" << g_set.lang << L"\n"; // M47
+    f << L"updchk=" << (g_set.updateCheck ? 1 : 0) << L"\n"; // M48
+    f << L"updurl=" << g_set.updateUrl << L"\n"; // M48
     f << L"fps=" << g_set.fpsCap << L"\n";
     f << L"anim=" << g_set.animSpeed << L"\n";
     f << L"labels=" << (g_set.labels ? 1 : 0) << L"\n";
@@ -3413,6 +3445,51 @@ static void ProcessIpcCommand(const std::wstring& cmd)
     }
 }
 
+// M48: "a.b.c" sürüm karşılaştır - feed > yerel ise true
+static bool VersionNewer(const std::wstring& feed, const std::wstring& local)
+{
+    int f[3] = { 0,0,0 }, l[3] = { 0,0,0 };
+    swscanf_s(feed.c_str(), L"%d.%d.%d", &f[0], &f[1], &f[2]);
+    swscanf_s(local.c_str(), L"%d.%d.%d", &l[0], &l[1], &l[2]);
+    for (int i = 0; i < 3; i++) if (f[i] != l[i]) return f[i] > l[i];
+    return false;
+}
+
+// M48: sürüm feed'ini çek (arka plan thread; ağ yoksa/başarısızsa SESSİZ - asla çökmez).
+// Sadece BİLDİRİM - indirme/kurulum YOK. Feed = raw "0.47.0" metni.
+static void UpdateCheckThread(std::wstring url)
+{
+    if (url.empty()) return;
+    std::string body;
+    HINTERNET hNet = InternetOpenW(L"SpatialCanvas-UpdateCheck",
+        INTERNET_OPEN_TYPE_PRECONFIG, nullptr, nullptr, 0);
+    if (hNet)
+    {
+        HINTERNET hUrl = InternetOpenUrlW(hNet, url.c_str(), nullptr, 0,
+            INTERNET_FLAG_NO_UI | INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE, 0);
+        if (hUrl)
+        {
+            char buf[128]; DWORD rd = 0;
+            while (body.size() < 64 && InternetReadFile(hUrl, buf, sizeof(buf), &rd) && rd > 0)
+                body.append(buf, rd);
+            InternetCloseHandle(hUrl);
+        }
+        InternetCloseHandle(hNet);
+    }
+    // ilk satır, sadece sürüm karakterleri (rakam/nokta) - HTML hata sayfası vs. elenir
+    std::wstring ver;
+    for (char c : body)
+    {
+        if (c == '\r' || c == '\n') break;
+        if ((c >= '0' && c <= '9') || c == '.') ver += (wchar_t)c;
+        else if (c == ' ' && ver.empty()) continue; // baştaki boşluk
+        else break; // beklenmeyen karakter → feed bozuk, dur
+    }
+    if (ver.empty() || !VersionNewer(ver, APP_VERSION)) return;
+    { std::lock_guard<std::mutex> lk(g_updateMutex); g_updateVer = ver; }
+    if (g_hwnd) PostMessageW(g_hwnd, MSG_UPDATE, 0, 0);
+}
+
 static void IpcServerThread()
 {
     for (;;)
@@ -3928,6 +4005,19 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         }
         return 0;
     }
+    case MSG_UPDATE: // M48: feed'de yeni sürüm bulundu - bildir (indirme YOK)
+    {
+        std::wstring v;
+        { std::lock_guard<std::mutex> lk(g_updateMutex); v = g_updateVer; }
+        if (!v.empty())
+        {
+            g_updateAvail = true;
+            ShowToast(TL(L"New version ", L"Yeni sürüm ") + v +
+                TL(L" available — github.com/13auth/spatial-canvas",
+                   L" mevcut — github.com/13auth/spatial-canvas"));
+        }
+        return 0;
+    }
     case WM_HOTKEY:
         if (wp == HOTKEY_TOGGLE)
         {
@@ -4264,6 +4354,9 @@ int RunCanvasApp()
 
     // M30: IPC named pipe sunucusu (g_hwnd hazır - PostMessage güvenli)
     std::thread(IpcServerThread).detach();
+    // M48: yeni-sürüm bildirimi (opt-in; ağ yoksa sessiz, sadece bildirim)
+    if (g_set.updateCheck)
+        std::thread(UpdateCheckThread, g_set.updateUrl).detach();
 
     InitD3D();
     InitD2D();

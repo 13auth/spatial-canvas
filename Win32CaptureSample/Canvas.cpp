@@ -113,6 +113,7 @@ constexpr const wchar_t* APP_VERSION = L"0.47.0";
 struct Settings
 {
     int lang = 0;           // M47: 0 English (varsayilan), 1 Turkce
+    bool restoreView = true; // M50: açılışta son kamera görünümünü geri yükle
     bool updateCheck = true; // M48: açılışta yeni-sürüm kontrolü (sadece bildirim)
     // M48: sürüm feed'i (raw VERSION dosyası, içerik "0.47.0"). HTTP/HTTPS (WinINet).
     std::wstring updateUrl = L"https://raw.githubusercontent.com/13auth/spatial-canvas/main/VERSION";
@@ -291,6 +292,9 @@ namespace
     std::wstring g_updateVer;                  // M48: feed'deki yeni sürüm (boş=yok)
     std::mutex g_updateMutex;
     bool g_updateAvail = false;                // M48: kalıcı HUD ipucu için
+    // M50: oturum görünüm restore (settings'ten yüklenen son kamera)
+    float g_loadCamX = 0, g_loadCamY = 0, g_loadCamZ = 0;
+    bool g_hasSavedCam = false;
     constexpr int HOTKEY_TOGGLE = 1;
     UINT g_msgTaskbarCreated = 0;   // M16: explorer yeniden başlama yayını
     bool g_geomDirty = false;       // M18: çözünürlük/DPI değişti, yeniden kur
@@ -755,6 +759,7 @@ static std::wstring RowLabel(int id)
     {
     case 11: return TL(L"Language", L"Dil"); // M47
     case 12: return TL(L"Update check", L"Güncelleme kontrolü"); // M48
+    case 13: return TL(L"Restore last view", L"Son görünümü geri yükle"); // M50
     case 0: return TL(L"Capture FPS", L"Yakalama FPS");
     case 1: return TL(L"Animation speed", L"Animasyon hızı");
     case 2: return TL(L"Title labels", L"Başlık etiketleri");
@@ -784,6 +789,7 @@ static std::wstring RowValue(int id)
     case 11: return g_set.lang == 1 ? L"Türkçe" : L"English"; // M47
     case 12: return g_updateAvail ? (L"v" + g_updateVer + TL(L" available!", L" mevcut!")) // M48
         : (g_set.updateCheck ? TL(L"On", L"Açık") : TL(L"Off", L"Kapalı"));
+    case 13: return g_set.restoreView ? TL(L"On", L"Açık") : TL(L"Off", L"Kapalı"); // M50
     case 0: return std::to_wstring(g_set.fpsCap);
     case 1: return g_set.animSpeed == 0 ? TL(L"Slow", L"Yavaş") : (g_set.animSpeed == 1 ? TL(L"Normal", L"Normal") : TL(L"Fast", L"Hızlı"));
     case 2: return g_set.labels ? TL(L"On", L"Açık") : TL(L"Off", L"Kapalı");
@@ -834,6 +840,7 @@ static void CycleRow(int id)
     case 10: g_set.minimap = !g_set.minimap; break; // M36
     case 11: g_set.lang = 1 - g_set.lang; break; // M47: EN/TR
     case 12: g_set.updateCheck = !g_set.updateCheck; break; // M48
+    case 13: g_set.restoreView = !g_set.restoreView; break; // M50
     case 104: g_set.wheelMod = (g_set.wheelMod + 1) % 5; break;
     case -10: g_panelTab = 0; g_captureRow = -1; return; // M10: sekmeler
     case -11: g_panelTab = 1; return;
@@ -936,11 +943,12 @@ static void DrawPanel(POINT cur)
     }
     // satırlar (aktif sekmeye göre)
     float y = top + 116;
-    const float rowH = 50;
-    static const int T0[] = { 11,12,0,1,2,3,4,5,6,7,8,9,10 }; // M47/M48: Dil + Güncelleme en üstte
+    static const int T0[] = { 11,12,13,0,1,2,3,4,5,6,7,8,9,10 }; // M47/M48/M50 üstte
     static const int T1[] = { 101,102,103,104,105,106,107 };
     const int* ids = g_panelTab ? T1 : T0;
-    int idCount = g_panelTab ? 7 : 13;
+    int idCount = g_panelTab ? 7 : 14;
+    // M50: satır yüksekliğini ekrana göre kıs (14 satır kısa ekranda taşmasın)
+    const float rowH = std::min(50.0f, ((float)g_priH - 130.0f) / (float)idCount);
     for (int idx = 0; idx < idCount; idx++)
     {
         int id = ids[idx];
@@ -2237,6 +2245,10 @@ static void LoadSettings()
         else if (k == L"lang") g_set.lang = _wtoi(v.c_str()); // M47
         else if (k == L"updchk") g_set.updateCheck = _wtoi(v.c_str()) != 0; // M48
         else if (k == L"updurl") g_set.updateUrl = v; // M48 (test/override)
+        else if (k == L"restview") g_set.restoreView = _wtoi(v.c_str()) != 0; // M50
+        else if (k == L"camx") { g_loadCamX = (float)_wtof(v.c_str()); g_hasSavedCam = true; } // M50
+        else if (k == L"camy") g_loadCamY = (float)_wtof(v.c_str()); // M50
+        else if (k == L"camz") g_loadCamZ = (float)_wtof(v.c_str()); // M50
         else if (k == L"bg") g_set.bgPreset = _wtoi(v.c_str());
         else if (k == L"grid") g_set.grid = _wtoi(v.c_str()) != 0; // M12
         else if (k == L"mmap") g_set.minimap = _wtoi(v.c_str()) != 0; // M36
@@ -2304,6 +2316,9 @@ static void SaveSettings()
     f << L"lang=" << g_set.lang << L"\n"; // M47
     f << L"updchk=" << (g_set.updateCheck ? 1 : 0) << L"\n"; // M48
     f << L"updurl=" << g_set.updateUrl << L"\n"; // M48
+    f << L"restview=" << (g_set.restoreView ? 1 : 0) << L"\n"; // M50
+    // M50: son kamera görünümü (hedef kamera = kullanıcının baktığı yer)
+    f << L"camx=" << g_camT.x << L"\ncamy=" << g_camT.y << L"\ncamz=" << g_camT.zoom << L"\n";
     f << L"fps=" << g_set.fpsCap << L"\n";
     f << L"anim=" << g_set.animSpeed << L"\n";
     f << L"labels=" << (g_set.labels ? 1 : 0) << L"\n";
@@ -4418,7 +4433,15 @@ int RunCanvasApp()
             L"Spatial Canvas", MB_OK | MB_ICONWARNING);
         return 1;
     }
-    FitCamera();
+    // M50: son görünümü geri yükle (kayıtlı + açık); yoksa/ilk açılışta tümünü sığdır
+    if (g_set.restoreView && g_hasSavedCam && g_loadCamZ > 0.001f)
+    {
+        g_camT.x = g_loadCamX; g_camT.y = g_loadCamY;
+        g_camT.zoom = std::clamp(g_loadCamZ, 0.02f, g_set.diveZoom * 0.95f);
+        g_cam = g_camT; // anında (animasyonsuz başla)
+        if (g_camT.zoom < 0.75f) g_swapArmed = true;
+    }
+    else FitCamera();
     ShowWindow(g_hwnd, SW_SHOW);
     RaiseCanvasTopmost(); // M11: tuval görev çubuğunun üstünde başlar
 
@@ -4600,6 +4623,7 @@ done:
     }
     ShowTaskbars(true); // M11: çıkışta görev çubuğu garantili görünür
     SaveLayout(); // son yerleşimi diske yaz (sonraki oturum hatırlar)
+    SaveSettings(); // M50: son kamera görünümünü de yaz (restore için)
     DeleteFileW(PendingFilePath().c_str()); // temiz çıkış - sigorta dosyası silinir
     return (int)msg.wParam;
 }

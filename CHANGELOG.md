@@ -3,6 +3,15 @@
 Spatial Canvas — notable user-facing changes. Versioning is milestone-based
 (M = milestone). Dates are 2026.
 
+## 0.50.0 — Zone frames
+- **Zone frames** — press `Ctrl+Shift+Z` to drop a labeled, colored region you
+  can use to group windows spatially (FigJam-style). Drag the **title bar** to
+  move it; the body is click-through so the windows underneath stay interactive.
+  Resize from the corner, rename by double-clicking the title, `Tab` cycles
+  color. Persisted across sessions.
+- A short "Updated to vX" notice now appears the first time you launch a new
+  build (press F1 for shortcuts).
+
 ## 0.49.0 — Export canvas to PNG
 - **Export your canvas to a PNG** with `Ctrl+Shift+S` (saved to your Pictures
   folder) — handy for sharing a snapshot of your workspace.

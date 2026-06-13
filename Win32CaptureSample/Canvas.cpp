@@ -292,6 +292,7 @@ namespace
     std::wstring g_updateVer;                  // M48: feed'deki yeni sürüm (boş=yok)
     std::mutex g_updateMutex;
     bool g_updateAvail = false;                // M48: kalıcı HUD ipucu için
+    D2D1_RECT_F g_updateRect{};                // M51: pill hit-test (tıkla=release aç)
     // M50: oturum görünüm restore (settings'ten yüklenen son kamera)
     float g_loadCamX = 0, g_loadCamY = 0, g_loadCamZ = 0;
     bool g_hasSavedCam = false;
@@ -857,6 +858,9 @@ static bool OverPanelUi(POINT p)
 {
     if (p.x >= g_uiX + 12 && p.x <= g_uiX + 52 &&
         p.y >= g_uiY + 12 && p.y <= g_uiY + 52) return true;
+    if (g_updateAvail && g_updateRect.right > g_updateRect.left && // M51: sürüm pill'i
+        (float)p.x >= g_updateRect.left && (float)p.x <= g_updateRect.right &&
+        (float)p.y >= g_updateRect.top && (float)p.y <= g_updateRect.bottom) return true;
     if (g_panelOpen &&
         (float)p.x >= g_uiX + (g_panelA - 1.0f) * PANEL_W &&
         (float)p.x <= g_uiX + g_panelA * PANEL_W &&
@@ -912,11 +916,14 @@ static void DrawPanel(POINT cur)
         { std::lock_guard<std::mutex> lk(g_updateMutex); ut = L"\u2191 v" + g_updateVer; }
         float pw = 26.0f + (float)ut.size() * 8.5f;
         D2D1_RECT_F up = D2D1::RectF(ux + 58, uy + 14, ux + 58 + pw, uy + 50);
+        g_updateRect = up; // M51: t\u0131klanabilir
+        bool upHov = (cur.x >= up.left && cur.x <= up.right && cur.y >= up.top && cur.y <= up.bottom);
         D2D1_ROUNDED_RECT upr{ up, 9, 9 };
         g_d2dRT->FillRoundedRectangle(upr, g_brBg.get());
-        g_d2dRT->DrawRoundedRectangle(upr, g_brSel.get(), 1.5f);
+        g_d2dRT->DrawRoundedRectangle(upr, g_brSel.get(), upHov ? 2.5f : 1.5f); // M51: hover
         g_d2dRT->DrawText(ut.c_str(), (UINT32)ut.size(), g_textFmt.get(), up, g_brSel.get());
     }
+    else g_updateRect = D2D1::RectF(0, 0, 0, 0);
 
     g_panelRows.clear();
     if (g_panelA < 0.01f) return;
@@ -3750,6 +3757,16 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             return 0;
         }
         if (HandlePanelClick(cp)) return 0; // M5: panel önceliklidir
+        // M51: yeni-sürüm pill'ine tık → release sayfasını tarayıcıda aç (sadece bildirim)
+        if (g_updateAvail && g_updateRect.right > g_updateRect.left &&
+            cp.x >= g_updateRect.left && cp.x <= g_updateRect.right &&
+            cp.y >= g_updateRect.top && cp.y <= g_updateRect.bottom)
+        {
+            ShellExecuteW(nullptr, L"open",
+                L"https://github.com/13auth/spatial-canvas/releases/latest",
+                nullptr, nullptr, SW_SHOWNORMAL);
+            return 0;
+        }
         // M22: pinned tile sürükleme (ekran-uzayı; tuval içeriğinden önce)
         int phit = HitPinned(cp);
         if (phit >= 0)

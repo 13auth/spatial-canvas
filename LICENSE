@@ -1,0 +1,47 @@
+Spatial Canvas License
+Copyright (c) 2026 Batuhan Demirbilek / 13auth. All rights reserved.
+
+This is a source-available, PROPRIETARY license. It is NOT an open-source
+license and does NOT grant the freedoms of MIT/GPL or similar.
+
+1. PERMISSION TO USE
+   You are granted a non-exclusive, royalty-free, revocable permission to
+   download, run, and use the Software (the Spatial Canvas application and the
+   source code in this repository) for personal, educational, and internal
+   purposes, free of charge.
+
+2. RESTRICTIONS
+   Without the prior written permission of the copyright holder, you may NOT:
+   (a) copy, reproduce, republish, mirror, or otherwise redistribute the
+       Software or its source code, in whole or in part, by any means;
+   (b) modify the Software or create derivative works for distribution;
+   (c) sell, rent, sublicense, or otherwise exploit the Software for any
+       commercial purpose, or offer it (or any part of it) as, or as part of,
+       a paid or commercial product or service.
+
+   Viewing the source on its hosting platform, and the incidental copies that
+   platform creates to provide that viewing, are permitted; this clause does
+   not grant any further right to copy or redistribute.
+
+3. NO WARRANTY
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHOR OR COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING
+   FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR ITS USE.
+
+4. THIRD-PARTY COMPONENTS
+   This project is built with "robmikh.common" (MIT License, Copyright (c)
+   Robert Mikhayelyan), obtained as a build-time NuGet package and not
+   redistributed within this repository. The project was originally
+   bootstrapped from the structure of robmikh/Win32CaptureSample (MIT License).
+   Those third-party components remain under their respective licenses; the
+   restrictions above apply only to the Spatial Canvas original work.
+
+--------------------------------------------------------------------------
+Özet (Türkçe — bilgilendirme amaçlı, bağlayıcı metin yukarıdaki İngilizce'dir):
+Herkes indirip KULLANABİLİR (kişisel/eğitim/kurum-içi, ücretsiz). Yazılı izin
+olmadan ÇOĞALTMAK, KOPYALAMAK, yeniden dağıtmak, türev üretip dağıtmak ve
+TİCARİ olarak sunmak YASAKTIR. Üçüncü taraf robmikh.common (MIT) bu kısıtların
+dışındadır.

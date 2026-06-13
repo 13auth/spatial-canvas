@@ -788,8 +788,10 @@ static std::wstring RowValue(int id)
     switch (id)
     {
     case 11: return g_set.lang == 1 ? L"Türkçe" : L"English"; // M47
-    case 12: return g_updateAvail ? (L"v" + g_updateVer + TL(L" available!", L" mevcut!")) // M48
-        : (g_set.updateCheck ? TL(L"On", L"Açık") : TL(L"Off", L"Kapalı"));
+    case 12: // M48 (g_updateVer mutex'li okunur)
+        if (g_updateAvail) { std::lock_guard<std::mutex> lk(g_updateMutex);
+            return L"v" + g_updateVer + TL(L" available!", L" mevcut!"); }
+        return g_set.updateCheck ? TL(L"On", L"Açık") : TL(L"Off", L"Kapalı");
     case 13: return g_set.restoreView ? TL(L"On", L"Açık") : TL(L"Off", L"Kapalı"); // M50
     case 0: return std::to_wstring(g_set.fpsCap);
     case 1: return g_set.animSpeed == 0 ? TL(L"Slow", L"Yavaş") : (g_set.animSpeed == 1 ? TL(L"Normal", L"Normal") : TL(L"Fast", L"Hızlı"));
@@ -4344,6 +4346,7 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         for (auto& t : g_tiles) RestoreOriginal(t);
         ShowTaskbars(true);
         SaveLayout();
+        SaveSettings(); // M50 fix: oturum-sonu/shutdown'da da kamerayı kaydet (restore)
         DeleteFileW(PendingFilePath().c_str());
         return TRUE;
     case WM_ENDSESSION:

@@ -193,6 +193,8 @@ namespace
     float g_marqAX = 0, g_marqAY = 0, g_marqBX = 0, g_marqBY = 0; // dünya
     struct GrpItem { HWND h; float x0, y0; };
     std::vector<GrpItem> g_grp;     // grup taşıma anlık görüntüsü
+    std::vector<GrpItem> g_zoneTiles; // M55: zon sürüklenirken içindeki tile'lar (birlikte taşınır)
+    float g_zoneDragX0 = 0, g_zoneDragY0 = 0; // M55: zonun sürükleme başı konumu
     bool g_groupDrag = false;
     float g_grpX0 = 0, g_grpY0 = 0; // grup taşıma başlangıç dünya noktası
     struct CopyItem { std::wstring path; std::wstring exe; };
@@ -3051,7 +3053,7 @@ static void HandleDeviceLost()
     g_deviceLost = false;
     g_dragTile = -1; g_groupDrag = false; g_marquee = false; // etkileşim sıfırla
     g_dragNote = -1; g_resizeNote = -1; // M44/M46: not sürükle/boyutlandır
-    g_dragZone = -1; g_resizeZone = -1; // M54: zon sürükle/boyutlandır
+    g_dragZone = -1; g_resizeZone = -1; g_zoneTiles.clear(); // M54/M55: zon sürükle/boyutlandır
     g_pinDrag = false; g_pinDragTile = -1; // M24 doğrulama: pin sürükleme de
     // 1) Cihaza bağlı TÜM kaynakları bırak (com_ptr.put() null ister)
     for (auto& t : g_tiles)
@@ -4129,6 +4131,17 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
                 g_editZone = -1; g_dragZone = zh;
                 g_zoneGrabDX = wx - g_zones[zh].wx;
                 g_zoneGrabDY = wy - g_zones[zh].wy;
+                // M55: zon içindeki (merkezi zonda olan) tile'ları yakala → birlikte taşı
+                Zone& z = g_zones[zh];
+                g_zoneDragX0 = z.wx; g_zoneDragY0 = z.wy;
+                g_zoneTiles.clear();
+                for (auto& t : g_tiles)
+                {
+                    if (t.pinnedFlag) continue;
+                    float cxw = t.wx + t.ww / 2, cyw = t.wy + t.wh / 2;
+                    if (cxw >= z.wx && cxw <= z.wx + z.w && cyw >= z.wy && cyw <= z.wy + z.h)
+                        g_zoneTiles.push_back({ t.source, t.wx, t.wy });
+                }
                 SetCapture(hwnd);
                 return 0;
             }
@@ -4210,6 +4223,7 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         if (g_resizeNote >= 0) { g_resizeNote = -1; SaveNotes(); // M46: boyutu kalıcılaştır
             if (!g_panning) ReleaseCapture(); return 0; }
         if (g_dragZone >= 0) { g_dragZone = -1; SaveZones(); // M54
+            if (!g_zoneTiles.empty()) { SaveLayout(); g_zoneTiles.clear(); } // M55: taşınan tile'lar
             if (!g_panning) ReleaseCapture(); return 0; }
         if (g_resizeZone >= 0) { g_resizeZone = -1; SaveZones(); // M54
             if (!g_panning) ReleaseCapture(); return 0; }
@@ -4254,8 +4268,14 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         }
         if (g_dragZone >= 0 && g_dragZone < (int)g_zones.size()) // M54: zonu taşı
         {
-            g_zones[g_dragZone].wx = g_cam.x + p.x / g_cam.zoom - g_zoneGrabDX;
-            g_zones[g_dragZone].wy = g_cam.y + p.y / g_cam.zoom - g_zoneGrabDY;
+            Zone& z = g_zones[g_dragZone];
+            z.wx = g_cam.x + p.x / g_cam.zoom - g_zoneGrabDX;
+            z.wy = g_cam.y + p.y / g_cam.zoom - g_zoneGrabDY;
+            // M55: içindeki tile'ları zonla aynı delta kadar taşı (grup-taşıma)
+            float dx = z.wx - g_zoneDragX0, dy = z.wy - g_zoneDragY0;
+            for (auto& gi : g_zoneTiles)
+                for (auto& t : g_tiles)
+                    if (t.source == gi.h) { t.wx = gi.x0 + dx; t.wy = gi.y0 + dy; }
             g_lastMouse = p; return 0;
         }
         if (g_resizeZone >= 0 && g_resizeZone < (int)g_zones.size()) // M54: zonu boyutlandır

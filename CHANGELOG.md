@@ -3,6 +3,16 @@
 Spatial Canvas — notable user-facing changes. Versioning is milestone-based
 (M = milestone). Dates are 2026.
 
+## 0.48.0 — Update notifications, note search, session restore
+- **New-version notification** (opt-in, notification-only): the app checks GitHub
+  on launch and tells you when a newer release exists — nothing is downloaded or
+  installed. Toggle in Settings.
+- **Search finds notes too:** `Ctrl+F` now matches sticky-note text, not just
+  windows; press Enter to fly to a note.
+- **Restore last view:** the canvas reopens exactly where you left off (first
+  launch still fits everything). Toggle in Settings.
+- Settings panel rows now adapt to screen height (fits short displays).
+
 ## 0.47.0 — Bilingual UI (English / Türkçe)
 - The entire UI is now **English by default**, with a **language toggle** in
   Settings (English / Türkçe), persisted across sessions.

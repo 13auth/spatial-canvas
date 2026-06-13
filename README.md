@@ -2,6 +2,8 @@
 
 ***English** · [Türkçe](README.tr.md)*
 
+![Spatial Canvas demo](assets/demo.gif)
+
 A window manager that places your live Windows windows onto an infinite,
 zoomable canvas. Instead of three monitors (or alongside them), one
 "bird's-eye workspace": zoom out, see everything; zoom in, teleport into the

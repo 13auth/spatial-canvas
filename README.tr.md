@@ -2,6 +2,8 @@
 
 *[English](README.md) · **Türkçe***
 
+![Spatial Canvas demo](assets/demo.gif)
+
 Canlı Windows pencerelerini sonsuz, zoom'lanabilir bir tuvale yerleştiren
 pencere yöneticisi. 3 monitör yerine (ya da 3 monitörle birlikte) tek bir
 "kuşbakışı çalışma alanı": uzaklaş, her şeyi gör; yakınlaş, gerçek pencereye

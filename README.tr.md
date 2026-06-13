@@ -67,6 +67,7 @@ dalınca normal z-düzenine iner ve görev çubuğu geri gelir.
 | Minimap (kuşbakışı) | Sağ-alt köşe · tıkla = oraya zıpla (panelden kapatılır) |
 | Yapışkan not (anotasyon) | **Ctrl+Shift+N** = imleçte not · yaz, **Tab**=renk, **Enter/Esc**=bitir |
 | Notu taşı / düzenle / boyutla / sil | Sol sürükle · çift tık = düzenle · sağ-alt köşe = boyutlandır · hover **✕** = sil |
+| Bölge çerçevesi (pencere grupla) | **Ctrl+Shift+Z** = etiketli bölge · **başlık çubuğundan** sürükle (gövde tıklama-geçirgen) · köşe = boyutlandır |
 | Tuvali PNG'ye aktar | **Ctrl+Shift+S** (Resimler klasörüne kaydedilir) |
 | Tüm kısayollar | **F1** |
 | Pencereyi **kapat** (uygulamayı) | Hover → sağ üstte **✕** (kendi kaydet-diyaloğu çıkar) |

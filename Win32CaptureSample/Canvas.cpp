@@ -261,6 +261,16 @@ namespace
     float g_noteGrabDX = 0, g_noteGrabDY = 0;
     constexpr float NOTE_W = 240.0f, NOTE_H = 150.0f; // varsayılan not boyutu (dünya-birimi)
     constexpr float NOTE_MIN_W = 110.0f, NOTE_MIN_H = 70.0f, NOTE_MAX = 1600.0f; // M46 sınır
+    // M54: bölge/zon çerçeveleri (etiketli renkli bölge; gövde tıklama-geçirgen, sadece
+    // başlık-çubuğu sürükler → altındaki tile'lar engellenmez). FigJam "frame" tarzı.
+    struct Zone { float wx = 0, wy = 0, w = 640.0f, h = 440.0f; int color = 0; std::wstring title; };
+    std::vector<Zone> g_zones;
+    int g_editZone = -1, g_dragZone = -1, g_resizeZone = -1, g_hoverZone = -1;
+    int g_zoneDelIdx = -1, g_zoneResIdx = -1;
+    D2D1_RECT_F g_zoneDelRect{}, g_zoneResRect{};
+    float g_zoneGrabDX = 0, g_zoneGrabDY = 0;
+    constexpr float ZONE_W = 640.0f, ZONE_H = 440.0f, ZONE_MIN_W = 200.0f, ZONE_MIN_H = 140.0f;
+    constexpr float ZONE_BAR = 34.0f; // başlık çubuğu yüksekliği (dünya-birimi)
     bool g_panning = false;
     POINT g_curClient{};            // M19: kare-başı tek imleç okuması (client)
     bool g_firstRun = false;        // M20: ilk açılış ipucu kartı
@@ -1256,6 +1266,87 @@ static int NoteAt(float wx, float wy)
     return -1;
 }
 
+// M54: (wx,wy) bir zonun BAŞLIK ÇUBUĞUNDA mı (gövde tıklama-geçirgen). Üstten alta.
+// Çubuk yüksekliği görseldeki ekran-uzayı bar ile eşleşir (min 22px → dünya 22/zoom).
+static int ZoneTitleAt(float wx, float wy)
+{
+    float barW = std::max(ZONE_BAR, 22.0f / std::max(g_cam.zoom, 0.001f));
+    for (int i = (int)g_zones.size() - 1; i >= 0; i--)
+    {
+        Zone& z = g_zones[i];
+        if (wx >= z.wx && wx <= z.wx + z.w && wy >= z.wy && wy <= z.wy + barW)
+            return i;
+    }
+    return -1;
+}
+
+// M54: bölge/zon çerçevelerini çiz (tile'ların ÜSTÜNDE ama notların ALTINDA; sadece
+// kenar + başlık çubuğu + soluk dolgu → gövde içeriği görünür kalır).
+static void DrawZones()
+{
+    if (g_zones.empty()) { g_hoverZone = -1; g_zoneDelIdx = -1; g_zoneResIdx = -1; return; }
+    POINT cur = g_curClient;
+    float mwx = g_cam.x + cur.x / g_cam.zoom, mwy = g_cam.y + cur.y / g_cam.zoom;
+    g_hoverZone = -1; g_zoneDelIdx = -1; g_zoneResIdx = -1;
+    D2D1_MATRIX_3X2_F world = D2D1::Matrix3x2F::Scale(g_cam.zoom, g_cam.zoom) *
+        D2D1::Matrix3x2F::Translation(-g_cam.x * g_cam.zoom, -g_cam.y * g_cam.zoom);
+    for (int i = 0; i < (int)g_zones.size(); i++)
+    {
+        Zone& z = g_zones[i];
+        float sx = (z.wx - g_cam.x) * g_cam.zoom, sy = (z.wy - g_cam.y) * g_cam.zoom;
+        float sw = z.w * g_cam.zoom, sh = z.h * g_cam.zoom;
+        if (sx > (float)g_sw || sy > (float)g_sh || sx + sw < 0 || sy + sh < 0) continue;
+        bool barHov = (mwx >= z.wx && mwx <= z.wx + z.w && mwy >= z.wy && mwy <= z.wy + ZONE_BAR);
+        if (barHov) g_hoverZone = i;
+        bool editing = (i == g_editZone);
+        D2D1_COLOR_F col = NoteColor(z.color);
+        // --- gövde kenarı + başlık çubuğu: dünya-uzayında ---
+        g_d2dRT->SetTransform(world);
+        D2D1_RECT_F body = D2D1::RectF(z.wx, z.wy, z.wx + z.w, z.wy + z.h);
+        D2D1_ROUNDED_RECT brr{ body, 10, 10 };
+        col.a = 0.06f; g_brNote->SetColor(col); g_d2dRT->FillRoundedRectangle(brr, g_brNote.get()); // soluk dolgu
+        g_d2dRT->SetTransform(D2D1::Matrix3x2F::Identity());
+        // M54: kenar + başlık çubuğu EKRAN-uzayında (her zoom'da görünür; dünya-kalınlık zoom-out'ta kaybolurdu)
+        D2D1_RECT_F sr = D2D1::RectF(sx, sy, sx + sw, sy + sh);
+        D2D1_ROUNDED_RECT srr{ sr, 10, 10 };
+        col.a = editing ? 1.0f : 0.9f; g_brNote->SetColor(col);
+        g_d2dRT->DrawRoundedRectangle(srr, g_brNote.get(), editing ? 4.0f : 2.5f); // renkli kenar (ekran-sabit)
+        float barH = std::max(ZONE_BAR * g_cam.zoom, 22.0f); // başlık çubuğu - min okunur yükseklik
+        D2D1_RECT_F bar = D2D1::RectF(sx, sy, sx + sw, sy + barH);
+        D2D1_ROUNDED_RECT barr{ bar, 8, 8 };
+        col.a = 0.9f; g_brNote->SetColor(col); g_d2dRT->FillRoundedRectangle(barr, g_brNote.get());
+        std::wstring disp = z.title;
+        if (editing) disp += L"_";
+        if (!disp.empty())
+            g_d2dRT->DrawText(disp.c_str(), (UINT32)disp.size(), g_textFmtL.get(),
+                D2D1::RectF(sx + 12, sy, sx + sw - 52, sy + barH), g_brPanelBg.get());
+        // --- başlık-çubuğu hover kontrolleri: ekran-sabit ---
+        if (barHov && sw > 90)
+        {
+            D2D1_RECT_F xr = D2D1::RectF(sx + sw - 28, sy + 5, sx + sw - 6, sy + 27);
+            D2D1_ROUNDED_RECT xrr{ xr, 6, 6 };
+            g_d2dRT->FillRoundedRectangle(xrr, g_brBg.get());
+            bool xh = cur.x >= xr.left && cur.x <= xr.right && cur.y >= xr.top && cur.y <= xr.bottom;
+            if (xh) g_d2dRT->DrawRoundedRectangle(xrr, g_brHover.get(), 2.0f);
+            g_d2dRT->DrawText(L"✕", 1, g_textFmt.get(), xr, g_brText.get());
+            g_zoneDelRect = xr; g_zoneDelIdx = i;
+        }
+        // boyut tutamağı (sağ-alt köşe) - hover değil, her zaman tıklanabilir (gövde geçirgen)
+        if (sw > 90 && sh > 60)
+        {
+            D2D1_RECT_F gr = D2D1::RectF(sx + sw - 20, sy + sh - 20, sx + sw - 2, sy + sh - 2);
+            bool gh = (i == g_resizeZone) || (cur.x >= gr.left && cur.x <= gr.right &&
+                       cur.y >= gr.top && cur.y <= gr.bottom);
+            g_d2dRT->DrawLine(D2D1::Point2F(gr.left + 4, gr.bottom), D2D1::Point2F(gr.right, gr.top + 4),
+                gh ? g_brHover.get() : g_brPanelBg.get(), 2.0f);
+            g_d2dRT->DrawLine(D2D1::Point2F(gr.left + 11, gr.bottom), D2D1::Point2F(gr.right, gr.top + 11),
+                gh ? g_brHover.get() : g_brPanelBg.get(), 2.0f);
+            g_zoneResRect = gr; g_zoneResIdx = i;
+        }
+    }
+    g_d2dRT->SetTransform(D2D1::Matrix3x2F::Identity());
+}
+
 // M44: notları dünya-uzayında çiz (tile'ların üstünde yüzer, panellerin altında).
 // Gövde+metin dünya-ölçekli transform altında (zoom'la büyür); ✕ ekran-sabit.
 static void DrawNotes()
@@ -1413,6 +1504,7 @@ static void DrawOverlay()
                 D2D1::RectF(tx, bg.top, bg.right - 6, bg.bottom), g_brText.get());
         }
     }
+    DrawZones(); // M54: bölgeler (notların altında, tile'ların üstünde - kenar+başlık)
     DrawNotes(); // M44: notlar tile'ların üstünde, paneller/marquee altında
     // M11: marquee seçim dikdörtgeni
     if (g_marquee && g_brPick)
@@ -1627,6 +1719,7 @@ static void DrawOverlay()
             L"Ctrl+P:  tile'ı ekrana sabitle (HUD)\n"
             L"Ctrl+G:  pencereleri ızgaraya diz\n"
             L"Ctrl+Shift+N:  yapışkan not (Tab=renk)\n"
+            L"Ctrl+Shift+Z:  bölge çerçevesi (başlıktan sürükle)\n"
             L"Ctrl+Shift+S:  tuvali PNG'ye aktar\n"
             L"Delete:  seçilileri çıkar\n"
             L"Ctrl+Shift+1..4:  yer imi kaydet\n"
@@ -1641,6 +1734,7 @@ static void DrawOverlay()
             L"Ctrl+P:  pin tile to screen (HUD)\n"
             L"Ctrl+G:  arrange windows into grid\n"
             L"Ctrl+Shift+N:  sticky note (Tab=color)\n"
+            L"Ctrl+Shift+Z:  zone frame (drag the title bar)\n"
             L"Ctrl+Shift+S:  export canvas to PNG\n"
             L"Delete:  remove selected\n"
             L"Ctrl+Shift+1..4:  save bookmark\n"
@@ -1753,6 +1847,52 @@ static void LoadNotes()
         }
         g_notes.push_back(n);
         if (g_notes.size() >= 200) break;
+    }
+}
+
+// ---- M54: bölge/zon kalıcılığı (zones.txt: wx|wy|w|h|renk|başlık) ----
+static std::wstring ZonesFilePath()
+{
+    std::wstring p = PendingFilePath();
+    return p.substr(0, p.find_last_of(L'\\')) + L"\\zones.txt";
+}
+
+static void SaveZones()
+{
+    std::wofstream f(ZonesFilePath(), std::ios::trunc);
+    if (!f) return;
+    int written = 0;
+    for (auto& z : g_zones)
+    {
+        if (written++ >= 100) break;
+        std::wstring t = z.title;
+        for (auto& ch : t) if (ch == L'\n' || ch == L'\r') ch = L' ';
+        f << (int)z.wx << L"|" << (int)z.wy << L"|" << (int)z.w << L"|" << (int)z.h
+          << L"|" << (z.color & 3) << L"|" << t << L"\n";
+    }
+}
+
+static void LoadZones()
+{
+    g_zones.clear();
+    std::wifstream f(ZonesFilePath());
+    if (!f) return;
+    std::wstring line;
+    while (std::getline(f, line))
+    {
+        while (!line.empty() && line.back() == L'\r') line.pop_back();
+        std::vector<size_t> b;
+        for (size_t i = 0; i < line.size(); i++) if (line[i] == L'|') b.push_back(i);
+        if (b.size() < 5) continue;
+        Zone z;
+        z.wx = (float)_wtof(line.substr(0, b[0]).c_str());
+        z.wy = (float)_wtof(line.substr(b[0] + 1, b[1] - b[0] - 1).c_str());
+        z.w = std::clamp((float)_wtof(line.substr(b[1] + 1, b[2] - b[1] - 1).c_str()), ZONE_MIN_W, 8000.0f);
+        z.h = std::clamp((float)_wtof(line.substr(b[2] + 1, b[3] - b[2] - 1).c_str()), ZONE_MIN_H, 8000.0f);
+        z.color = _wtoi(line.substr(b[3] + 1, b[4] - b[3] - 1).c_str()) & 3;
+        z.title = line.substr(b[4] + 1);
+        g_zones.push_back(z);
+        if (g_zones.size() >= 100) break;
     }
 }
 
@@ -2588,6 +2728,8 @@ static void FitCamera(bool ignoreSel)
     // M45: seçim odaklı değilken notları da çerçevele (uzaktaki not kaybolmasın)
     if (!sel)
         for (auto& nt : g_notes) fold(nt.wx, nt.wy, nt.w, nt.h);
+    if (!sel) // M54: bölgeleri de çerçevele
+        for (auto& z : g_zones) fold(z.wx, z.wy, z.w, z.h);
     if (n == 0) return; // sığdıracak içerik yok (hepsi pinned / boş tuval)
     float bw = std::max(maxX - minX, 1.0f); // dejenere yerleşimde inf zoom yok
     float bh = std::max(maxY - minY, 1.0f);
@@ -2909,6 +3051,7 @@ static void HandleDeviceLost()
     g_deviceLost = false;
     g_dragTile = -1; g_groupDrag = false; g_marquee = false; // etkileşim sıfırla
     g_dragNote = -1; g_resizeNote = -1; // M44/M46: not sürükle/boyutlandır
+    g_dragZone = -1; g_resizeZone = -1; // M54: zon sürükle/boyutlandır
     g_pinDrag = false; g_pinDragTile = -1; // M24 doğrulama: pin sürükleme de
     // 1) Cihaza bağlı TÜM kaynakları bırak (com_ptr.put() null ister)
     for (auto& t : g_tiles)
@@ -3550,6 +3693,15 @@ static void ProcessIpcCommand(const std::wstring& cmd)
     auto starts = [&](const wchar_t* p) { return cmd.rfind(p, 0) == 0; };
     if (cmd == L"fit") FitCamera(true);
     else if (cmd == L"png") g_pngRequest = true; // M52: tuvali PNG'ye aktar
+    else if (starts(L"zone:")) // M54: görüş merkezine bölge ekle
+    {
+        Zone z; z.title = cmd.substr(5);
+        z.wx = g_cam.x + (g_sw / g_cam.zoom) / 2.0f - ZONE_W / 2;
+        z.wy = g_cam.y + (g_sh / g_cam.zoom) / 2.0f - ZONE_H / 2;
+        if (z.title.size() > 80) z.title.resize(80);
+        g_zones.push_back(z); SaveZones();
+        ShowToast(TL(L"Zone added", L"Bölge eklendi"));
+    }
     else if (cmd == L"arrange") ArrangeGrid(); // M35
     else if (cmd == L"quit") PostQuitMessage(0);
     else if (starts(L"save:")) SaveNamedLayout(cmd.substr(5)); // M42
@@ -3778,6 +3930,9 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         {
             int nh = NoteAt(g_cam.x + cp.x / g_cam.zoom, g_cam.y + cp.y / g_cam.zoom);
             if (nh >= 0) { g_editNote = nh; g_dragNote = -1; return 0; }
+            // M54: zon başlık-çubuğuna çift tık = başlığı düzenle
+            int zh = ZoneTitleAt(g_cam.x + cp.x / g_cam.zoom, g_cam.y + cp.y / g_cam.zoom);
+            if (zh >= 0) { g_editZone = zh; g_dragZone = -1; return 0; }
         }
         // M22: pinned tile'a çift tık = çöz + dal (imleç merkezli dünyaya koy)
         int pdb = HitPinned(cp);
@@ -3949,6 +4104,34 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
                 SetCapture(hwnd);
                 return 0;
             }
+            // M54: zon ✕ / boyut / başlık-çubuğu (gövde GEÇİRGEN - tile'a düşer)
+            if (g_zoneDelIdx >= 0 && g_zoneDelIdx < (int)g_zones.size() &&
+                cp.x >= g_zoneDelRect.left && cp.x <= g_zoneDelRect.right &&
+                cp.y >= g_zoneDelRect.top && cp.y <= g_zoneDelRect.bottom)
+            {
+                if (g_editZone == g_zoneDelIdx) g_editZone = -1;
+                else if (g_editZone > g_zoneDelIdx) g_editZone--;
+                g_zones.erase(g_zones.begin() + g_zoneDelIdx);
+                g_zoneDelIdx = -1; SaveZones();
+                return 0;
+            }
+            if (g_zoneResIdx >= 0 && g_zoneResIdx < (int)g_zones.size() &&
+                cp.x >= g_zoneResRect.left && cp.x <= g_zoneResRect.right &&
+                cp.y >= g_zoneResRect.top && cp.y <= g_zoneResRect.bottom)
+            {
+                g_editZone = -1; g_resizeZone = g_zoneResIdx;
+                SetCapture(hwnd);
+                return 0;
+            }
+            int zh = ZoneTitleAt(wx, wy);
+            if (zh >= 0)
+            {
+                g_editZone = -1; g_dragZone = zh;
+                g_zoneGrabDX = wx - g_zones[zh].wx;
+                g_zoneGrabDY = wy - g_zones[zh].wy;
+                SetCapture(hwnd);
+                return 0;
+            }
         }
         int hit = HitTile(wx, wy);
         if (hit >= 0)
@@ -4026,6 +4209,10 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             if (!g_panning) ReleaseCapture(); return 0; }
         if (g_resizeNote >= 0) { g_resizeNote = -1; SaveNotes(); // M46: boyutu kalıcılaştır
             if (!g_panning) ReleaseCapture(); return 0; }
+        if (g_dragZone >= 0) { g_dragZone = -1; SaveZones(); // M54
+            if (!g_panning) ReleaseCapture(); return 0; }
+        if (g_resizeZone >= 0) { g_resizeZone = -1; SaveZones(); // M54
+            if (!g_panning) ReleaseCapture(); return 0; }
         if (g_pinDrag) { g_pinDrag = false; g_pinDragTile = -1; // M22
             if (!g_panning) ReleaseCapture(); return 0; }
         if (g_dragTile >= 0 || g_groupDrag) SaveLayout(); // yerleşimi kalıcılaştır
@@ -4064,6 +4251,19 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             n.h = std::clamp(g_cam.y + p.y / g_cam.zoom - n.wy, NOTE_MIN_H, NOTE_MAX);
             g_lastMouse = p;
             return 0;
+        }
+        if (g_dragZone >= 0 && g_dragZone < (int)g_zones.size()) // M54: zonu taşı
+        {
+            g_zones[g_dragZone].wx = g_cam.x + p.x / g_cam.zoom - g_zoneGrabDX;
+            g_zones[g_dragZone].wy = g_cam.y + p.y / g_cam.zoom - g_zoneGrabDY;
+            g_lastMouse = p; return 0;
+        }
+        if (g_resizeZone >= 0 && g_resizeZone < (int)g_zones.size()) // M54: zonu boyutlandır
+        {
+            Zone& z = g_zones[g_resizeZone];
+            z.w = std::clamp(g_cam.x + p.x / g_cam.zoom - z.wx, ZONE_MIN_W, 8000.0f);
+            z.h = std::clamp(g_cam.y + p.y / g_cam.zoom - z.wy, ZONE_MIN_H, 8000.0f);
+            g_lastMouse = p; return 0;
         }
         if (g_pinDrag && g_pinDragTile >= 0 && g_pinDragTile < (int)g_tiles.size())
         {
@@ -4258,6 +4458,15 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             }
             return 0; // karakter/backspace WM_CHAR'da
         }
+        // M54: zon başlık düzenleme modu (notlarla aynı; boş başlık iptal etmez - zon kalır)
+        if (g_editZone >= 0 && g_activeTile < 0)
+        {
+            if (g_editZone >= (int)g_zones.size()) { g_editZone = -1; return 0; }
+            if (vk == VK_ESCAPE || vk == VK_RETURN) { g_editZone = -1; SaveZones(); return 0; }
+            if (vk == VK_TAB) { g_zones[g_editZone].color = (g_zones[g_editZone].color + 1) & 3; SaveZones(); return 0; }
+            if (vk == VK_DELETE) { g_zones.erase(g_zones.begin() + g_editZone); g_editZone = -1; SaveZones(); return 0; }
+            return 0;
+        }
         // M21: ok tuşları = odak gezinme (autorepeat'ten ÖNCE: tutunca adımlasın)
         if (g_captureRow < 0 && !g_helpOpen && g_activeTile < 0 && mods == 0 &&
             (vk == VK_LEFT || vk == VK_RIGHT || vk == VK_UP || vk == VK_DOWN))
@@ -4347,6 +4556,19 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             g_pngRequest = true;
             return 0;
         }
+        // M54: Ctrl+Shift+Z - imleçte bölge/zon oluştur (başlık-çubuğu imlecin altında) + başlık düzenle
+        if (mods == 5 && vk == 'Z' && g_activeTile < 0)
+        {
+            POINT cur{}; GetCursorPos(&cur); ScreenToClient(hwnd, &cur);
+            Zone z;
+            z.wx = g_cam.x + cur.x / g_cam.zoom - ZONE_W / 2;
+            z.wy = g_cam.y + cur.y / g_cam.zoom - ZONE_BAR / 2; // başlık çubuğu imleçte
+            g_zones.push_back(z);
+            g_editZone = (int)g_zones.size() - 1;
+            ShowToast(TL(L"Zone: type a title, Enter=done; drag the title bar",
+                         L"Bölge: başlık yaz, Enter=bitir; başlık çubuğundan sürükle"));
+            return 0;
+        }
         // M13: tuval yer imleri - Ctrl+Shift+1..4 kaydet, Ctrl+1..4 zıpla
         if (vk >= '1' && vk <= '4' && g_activeTile < 0 && (mods == 1 || mods == 5))
         {
@@ -4389,6 +4611,13 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             if (c == 8) { if (!g_notes[g_editNote].text.empty()) g_notes[g_editNote].text.pop_back(); }
             else if (c >= 32 && g_notes[g_editNote].text.size() < 280) g_notes[g_editNote].text += c;
             // Enter/Esc commit WM_KEYDOWN'da; kaydetme commit'te (kare-başı disk yazma yok)
+            return 0;
+        }
+        if (g_editZone >= 0 && g_editZone < (int)g_zones.size()) // M54: zon başlığı düzenleme
+        {
+            wchar_t c = (wchar_t)wp;
+            if (c == 8) { if (!g_zones[g_editZone].title.empty()) g_zones[g_editZone].title.pop_back(); }
+            else if (c >= 32 && g_zones[g_editZone].title.size() < 80) g_zones[g_editZone].title += c;
             return 0;
         }
         if (g_launchOpen) // M23: başlatıcı giriş kutusu
@@ -4474,6 +4703,7 @@ int RunCanvasApp()
     // M3: kayıtlı tile yerleşimini yükle (exe bazlı)
     LoadLayout();
     LoadNotes(); // M44: tuval notlarını geri yükle
+    LoadZones(); // M54: bölge çerçevelerini geri yükle
 
     // M5: kullanıcı ayarlarını yükle
     LoadSettings();

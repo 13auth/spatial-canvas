@@ -347,6 +347,7 @@ static void ParkWindow(Tile& t, int idx);
 static void FitCamera(bool ignoreSel = false); // M17: seçim varsa onu sığdırır
 static void ArrangeGrid(); // M35/M40: ızgaraya diz (komut paletinden de çağrılır)
 static void ArrangeZone(int zi); // M56: bir bölgenin içindeki pencereleri diz
+static D2D1_COLOR_F NoteColor(int c); // M44: not/zon renk paleti
 static void SaveNamedLayout(const std::wstring& name); // M42: workspace
 static void LoadNamedLayout(const std::wstring& name);
 static std::wstring ExeNameOf(HWND hwnd); // M18: kurtarmada hwnd doğrulaması
@@ -1201,6 +1202,12 @@ static void DrawMinimap()
         maxX = std::max(maxX, nt.wx + nt.w); maxY = std::max(maxY, nt.wy + nt.h);
         n++;
     }
+    for (auto& z : g_zones) // M58: bölgeleri de minimap sınırına kat
+    {
+        minX = std::min(minX, z.wx); minY = std::min(minY, z.wy);
+        maxX = std::max(maxX, z.wx + z.w); maxY = std::max(maxY, z.wy + z.h);
+        n++;
+    }
     if (n == 0) return;
     // kamera görüşünü de dahil et (dışarıdaysa minimap'te yön belli olsun)
     float vx = g_cam.x, vy = g_cam.y, vw = g_sw / g_cam.zoom, vh = g_sh / g_cam.zoom;
@@ -1253,6 +1260,15 @@ static void DrawMinimap()
         g_d2dRT->FillRectangle(D2D1::RectF(nxp - 2, nyp - 2, nxp + 2, nyp + 2), g_brPick.get());
     }
     g_brPick->SetOpacity(1.0f);
+    // M58: bölgeler minimap'te renkli dış-çizgi dikdörtgen (mekansal bağlam)
+    for (auto& z : g_zones)
+    {
+        float zx = mx + (z.wx - minX) * scale, zy = my + (z.wy - minY) * scale;
+        float zw = z.w * scale, zh = z.h * scale;
+        D2D1_COLOR_F zc = NoteColor(z.color); zc.a = 0.85f;
+        g_brNote->SetColor(zc);
+        g_d2dRT->DrawRectangle(D2D1::RectF(zx, zy, zx + zw, zy + zh), g_brNote.get(), 1.0f);
+    }
 }
 
 // M44: not paleti rengi (4 yapışkan ton - açık zemin, koyu metin okunur)

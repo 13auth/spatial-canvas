@@ -3,6 +3,12 @@
 Spatial Canvas — notable user-facing changes. Versioning is milestone-based
 (M = milestone). Dates are 2026.
 
+## 0.54.0 — Canvas polish
+- **Double-click** empty canvas to drop a sticky note (whiteboard-style).
+- Clicking away from a note/zone you're editing now finishes the edit.
+- **Connector arrows clip to window edges** instead of cutting through them.
+- The empty-canvas hint now lists the full toolset (notes, zones, links).
+
 ## 0.53.0 — Minimap shows everything + drag fixes
 - The minimap now shows **zones and connectors** too, not just windows and notes
   — a complete bird's-eye of the canvas.

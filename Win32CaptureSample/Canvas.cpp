@@ -1690,11 +1690,13 @@ static void DrawOverlay()
     {
         const wchar_t* hint = TL(
             L"Canvas is empty\n\n"
-            L"Move to right edge → launch app   ·   Ctrl+N: launcher palette\n"
-            L"Ctrl+Shift+N: sticky note   ·   F1: all shortcuts",
+            L"Right edge → launch app   ·   Ctrl+N: launcher palette\n"
+            L"Double-click / Ctrl+Shift+N: note   ·   Ctrl+Shift+Z: zone\n"
+            L"Ctrl+drag between windows: link   ·   F1: all shortcuts",
             L"Tuval boş\n\n"
-            L"Sağ kenara git → uygulama başlat   ·   Ctrl+N: başlatıcı palet\n"
-            L"Ctrl+Shift+N: yapışkan not   ·   F1: tüm kısayollar");
+            L"Sağ kenar → uygulama başlat   ·   Ctrl+N: başlatıcı palet\n"
+            L"Çift tık / Ctrl+Shift+N: not   ·   Ctrl+Shift+Z: bölge\n"
+            L"Pencereler arası Ctrl+sürükle: bağla   ·   F1: kısayollar");
         winrt::com_ptr<ID2D1SolidColorBrush> hb;
         g_d2dRT->CreateSolidColorBrush(D2D1::ColorF(0.62f, 0.66f, 0.74f, 0.55f), hb.put());
         float cx = g_uiX + g_priW / 2.0f, cy = g_uiY + g_priH / 2.0f;

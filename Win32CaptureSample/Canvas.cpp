@@ -268,8 +268,8 @@ namespace
     struct Zone { float wx = 0, wy = 0, w = 640.0f, h = 440.0f; int color = 0; std::wstring title; };
     std::vector<Zone> g_zones;
     int g_editZone = -1, g_dragZone = -1, g_resizeZone = -1, g_hoverZone = -1;
-    int g_zoneDelIdx = -1, g_zoneResIdx = -1;
-    D2D1_RECT_F g_zoneDelRect{}, g_zoneResRect{};
+    int g_zoneDelIdx = -1, g_zoneResIdx = -1, g_zoneArrIdx = -1; // M56: ⊞ düzenle butonu
+    D2D1_RECT_F g_zoneDelRect{}, g_zoneResRect{}, g_zoneArrRect{};
     float g_zoneGrabDX = 0, g_zoneGrabDY = 0;
     constexpr float ZONE_W = 640.0f, ZONE_H = 440.0f, ZONE_MIN_W = 200.0f, ZONE_MIN_H = 140.0f;
     constexpr float ZONE_BAR = 34.0f; // başlık çubuğu yüksekliği (dünya-birimi)
@@ -338,6 +338,7 @@ static void ShowToast(const std::wstring& s)
 static void ParkWindow(Tile& t, int idx);
 static void FitCamera(bool ignoreSel = false); // M17: seçim varsa onu sığdırır
 static void ArrangeGrid(); // M35/M40: ızgaraya diz (komut paletinden de çağrılır)
+static void ArrangeZone(int zi); // M56: bir bölgenin içindeki pencereleri diz
 static void SaveNamedLayout(const std::wstring& name); // M42: workspace
 static void LoadNamedLayout(const std::wstring& name);
 static std::wstring ExeNameOf(HWND hwnd); // M18: kurtarmada hwnd doğrulaması
@@ -1286,10 +1287,10 @@ static int ZoneTitleAt(float wx, float wy)
 // kenar + başlık çubuğu + soluk dolgu → gövde içeriği görünür kalır).
 static void DrawZones()
 {
-    if (g_zones.empty()) { g_hoverZone = -1; g_zoneDelIdx = -1; g_zoneResIdx = -1; return; }
+    if (g_zones.empty()) { g_hoverZone = -1; g_zoneDelIdx = -1; g_zoneResIdx = -1; g_zoneArrIdx = -1; return; }
     POINT cur = g_curClient;
     float mwx = g_cam.x + cur.x / g_cam.zoom, mwy = g_cam.y + cur.y / g_cam.zoom;
-    g_hoverZone = -1; g_zoneDelIdx = -1; g_zoneResIdx = -1;
+    g_hoverZone = -1; g_zoneDelIdx = -1; g_zoneResIdx = -1; g_zoneArrIdx = -1;
     D2D1_MATRIX_3X2_F world = D2D1::Matrix3x2F::Scale(g_cam.zoom, g_cam.zoom) *
         D2D1::Matrix3x2F::Translation(-g_cam.x * g_cam.zoom, -g_cam.y * g_cam.zoom);
     for (int i = 0; i < (int)g_zones.size(); i++)
@@ -1332,6 +1333,17 @@ static void DrawZones()
             if (xh) g_d2dRT->DrawRoundedRectangle(xrr, g_brHover.get(), 2.0f);
             g_d2dRT->DrawText(L"✕", 1, g_textFmt.get(), xr, g_brText.get());
             g_zoneDelRect = xr; g_zoneDelIdx = i;
+            // M56: ⊞ düzenle butonu (✕'in solunda) - içindeki pencereleri ızgaraya diz
+            if (sw > 120)
+            {
+                D2D1_RECT_F ar = D2D1::RectF(sx + sw - 54, sy + 5, sx + sw - 32, sy + 27);
+                D2D1_ROUNDED_RECT arr{ ar, 6, 6 };
+                g_d2dRT->FillRoundedRectangle(arr, g_brBg.get());
+                bool ah = cur.x >= ar.left && cur.x <= ar.right && cur.y >= ar.top && cur.y <= ar.bottom;
+                if (ah) g_d2dRT->DrawRoundedRectangle(arr, g_brHover.get(), 2.0f);
+                g_d2dRT->DrawText(L"⊞", 1, g_textFmt.get(), ar, g_brText.get());
+                g_zoneArrRect = ar; g_zoneArrIdx = i;
+            }
         }
         // boyut tutamağı (sağ-alt köşe) - hover değil, her zaman tıklanabilir (gövde geçirgen)
         if (sw > 90 && sh > 60)
@@ -3553,6 +3565,38 @@ static void ArrangeGrid()
     ShowToast(std::to_wstring((int)idx.size()) + TL(L" windows arranged into grid", L" pencere ızgaraya dizildi"));
 }
 
+// M56: bir bölgenin İÇİNDEKİ (merkezi zonda) pencereleri zon-içinde ızgaraya diz;
+// gerekirse zonu içeriği saracak şekilde büyüt. (Zon ⊞ butonundan tetiklenir.)
+static void ArrangeZone(int zi)
+{
+    if (zi < 0 || zi >= (int)g_zones.size()) return;
+    Zone& z = g_zones[zi];
+    std::vector<int> idx;
+    for (int i = 0; i < (int)g_tiles.size(); i++)
+    {
+        if (g_tiles[i].pinnedFlag) continue;
+        float cx = g_tiles[i].wx + g_tiles[i].ww / 2, cy = g_tiles[i].wy + g_tiles[i].wh / 2;
+        if (cx >= z.wx && cx <= z.wx + z.w && cy >= z.wy && cy <= z.wy + z.h) idx.push_back(i);
+    }
+    if (idx.empty()) { ShowToast(TL(L"Zone is empty", L"Bölge boş")); return; }
+    int cols = (int)ceilf(sqrtf((float)idx.size())); if (cols < 1) cols = 1;
+    int rows = ((int)idx.size() + cols - 1) / cols;
+    float cw = 0, ch = 0;
+    for (int i : idx) { cw = std::max(cw, g_tiles[i].ww); ch = std::max(ch, g_tiles[i].wh); }
+    cw += 50.0f; ch += 50.0f;
+    float ox = z.wx + 30, oy = z.wy + ZONE_BAR + 18; // zon içi sol-üst (başlık çubuğunun altı)
+    for (size_t k = 0; k < idx.size(); k++)
+    {
+        int r = (int)k / cols, c = (int)k % cols;
+        g_tiles[idx[k]].wx = ox + c * cw;
+        g_tiles[idx[k]].wy = oy + r * ch;
+    }
+    z.w = std::max(z.w, cols * cw + 60);       // zonu içeriği saracak şekilde büyüt
+    z.h = std::max(z.h, ZONE_BAR + rows * ch + 40);
+    SaveLayout(); SaveZones();
+    ShowToast(std::to_wstring((int)idx.size()) + TL(L" windows tidied in zone", L" pencere bölgede dizildi"));
+}
+
 // M14: sürüklenen tile yakın kenarlara yapışır (Alt basılıyken serbest).
 // Eksen başına en yakın aday: kenar-kenara bitişme veya kenar hizalama.
 static void SnapTile(int i)
@@ -3704,6 +3748,8 @@ static void ProcessIpcCommand(const std::wstring& cmd)
         g_zones.push_back(z); SaveZones();
         ShowToast(TL(L"Zone added", L"Bölge eklendi"));
     }
+    else if (cmd == L"zonetidy" && !g_zones.empty()) // M56: son zonu içinden düzenle (test/scripting)
+        ArrangeZone((int)g_zones.size() - 1);
     else if (cmd == L"arrange") ArrangeGrid(); // M35
     else if (cmd == L"quit") PostQuitMessage(0);
     else if (starts(L"save:")) SaveNamedLayout(cmd.substr(5)); // M42
@@ -4104,6 +4150,14 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
                 g_noteGrabDX = wx - g_notes[nh].wx;
                 g_noteGrabDY = wy - g_notes[nh].wy;
                 SetCapture(hwnd);
+                return 0;
+            }
+            // M56: zon ⊞ düzenle butonu - içindeki pencereleri ızgaraya diz
+            if (g_zoneArrIdx >= 0 && g_zoneArrIdx < (int)g_zones.size() &&
+                cp.x >= g_zoneArrRect.left && cp.x <= g_zoneArrRect.right &&
+                cp.y >= g_zoneArrRect.top && cp.y <= g_zoneArrRect.bottom)
+            {
+                ArrangeZone(g_zoneArrIdx);
                 return 0;
             }
             // M54: zon ✕ / boyut / başlık-çubuğu (gövde GEÇİRGEN - tile'a düşer)

@@ -1486,20 +1486,32 @@ static void DrawConnectors()
     g_connDelIdx = -1;
     if (g_connectors.empty() && !g_connecting) return;
     POINT cur = g_curClient;
-    auto centerOf = [&](HWND h, float& cx, float& cy) -> bool {
+    auto boxOf = [&](HWND h, float& cx, float& cy, float& hw, float& hh) -> bool {
         for (auto& t : g_tiles) if (t.source == h && !t.pinnedFlag) {
-            cx = t.wx + t.ww / 2; cy = t.wy + t.wh / 2; return true; }
+            cx = t.wx + t.ww / 2; cy = t.wy + t.wh / 2; hw = t.ww / 2; hh = t.wh / 2; return true; }
         return false;
     };
+    // M63: bir kutu merkezinden hedefe doğru, kutu KENARINDAki çıkış noktası
+    auto edgePoint = [](float cx, float cy, float hw, float hh, float tx, float ty, float& ex, float& ey) {
+        float dx = tx - cx, dy = ty - cy;
+        float sx = (fabsf(dx) > 1e-4f) ? hw / fabsf(dx) : 1e9f;
+        float sy = (fabsf(dy) > 1e-4f) ? hh / fabsf(dy) : 1e9f;
+        float s = std::min(std::min(sx, sy), 1.0f); // kutu içinde kal (örtüşme degenere)
+        ex = cx + dx * s; ey = cy + dy * s;
+    };
     // ölü bağlantıları temizle (HWND artık canlı tile değil)
-    float tmp1, tmp2;
+    float t1, t2, t3, t4;
     g_connectors.erase(std::remove_if(g_connectors.begin(), g_connectors.end(),
-        [&](const Connector& c){ return !centerOf(c.a, tmp1, tmp2) || !centerOf(c.b, tmp1, tmp2); }),
+        [&](const Connector& c){ return !boxOf(c.a, t1, t2, t3, t4) || !boxOf(c.b, t1, t2, t3, t4); }),
         g_connectors.end());
     for (int i = 0; i < (int)g_connectors.size(); i++)
     {
-        float ax, ay, bx, by;
-        if (!centerOf(g_connectors[i].a, ax, ay) || !centerOf(g_connectors[i].b, bx, by)) continue;
+        float cax, cay, hwa, hha, cbx, cby, hwb, hhb;
+        if (!boxOf(g_connectors[i].a, cax, cay, hwa, hha) ||
+            !boxOf(g_connectors[i].b, cbx, cby, hwb, hhb)) continue;
+        float ax, ay, bx, by; // M63: kenar-kenara (çizgi pencerelerin içinden geçmez)
+        edgePoint(cax, cay, hwa, hha, cbx, cby, ax, ay);
+        edgePoint(cbx, cby, hwb, hhb, cax, cay, bx, by);
         float sax = (ax - g_cam.x) * g_cam.zoom, say = (ay - g_cam.y) * g_cam.zoom;
         float sbx = (bx - g_cam.x) * g_cam.zoom, sby = (by - g_cam.y) * g_cam.zoom;
         g_brPick->SetOpacity(0.9f);
@@ -1524,8 +1536,8 @@ static void DrawConnectors()
     }
     if (g_connecting && g_connectFrom) // rubber-band
     {
-        float ax, ay;
-        if (centerOf(g_connectFrom, ax, ay))
+        float ax, ay, hw, hh;
+        if (boxOf(g_connectFrom, ax, ay, hw, hh))
         {
             float sax = (ax - g_cam.x) * g_cam.zoom, say = (ay - g_cam.y) * g_cam.zoom;
             g_brSel->SetOpacity(0.8f);

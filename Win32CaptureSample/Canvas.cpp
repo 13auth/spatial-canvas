@@ -1269,6 +1269,24 @@ static void DrawMinimap()
         g_brNote->SetColor(zc);
         g_d2dRT->DrawRectangle(D2D1::RectF(zx, zy, zx + zw, zy + zh), g_brNote.get(), 1.0f);
     }
+    // M59: bağlayıcılar minimap'te ince teal çizgi (tam kuşbakışı: tile+not+zon+bağlantı)
+    if (!g_connectors.empty())
+    {
+        auto miniCenter = [&](HWND h, float& px, float& py) -> bool {
+            for (auto& t : g_tiles) if (t.source == h && !t.pinnedFlag) {
+                px = mx + (t.wx + t.ww / 2 - minX) * scale;
+                py = my + (t.wy + t.wh / 2 - minY) * scale; return true; }
+            return false;
+        };
+        g_brPick->SetOpacity(0.7f);
+        for (auto& c : g_connectors)
+        {
+            float ax, ay, bx, by;
+            if (miniCenter(c.a, ax, ay) && miniCenter(c.b, bx, by))
+                g_d2dRT->DrawLine(D2D1::Point2F(ax, ay), D2D1::Point2F(bx, by), g_brPick.get(), 0.8f);
+        }
+        g_brPick->SetOpacity(1.0f);
+    }
 }
 
 // M44: not paleti rengi (4 yapışkan ton - açık zemin, koyu metin okunur)

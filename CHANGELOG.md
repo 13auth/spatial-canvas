@@ -3,6 +3,12 @@
 Spatial Canvas — notable user-facing changes. Versioning is milestone-based
 (M = milestone). Dates are 2026.
 
+## 0.52.0 — Connector arrows
+- **Connector arrows** — **Ctrl+drag** from one window to another to draw an
+  arrow linking them; the line follows the windows as they move. Hover the
+  midpoint **✕** to remove. (Session-only.) Together with sticky notes and zone
+  frames, the canvas now has the full set of spatial-thinking tools.
+
 ## 0.51.0 — Zones group & tidy windows
 - Dragging a zone's title bar now **moves the windows inside it** along with it.
 - Each zone has a small **grid button** (next to the ✕) that **tidies the

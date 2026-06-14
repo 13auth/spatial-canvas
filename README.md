@@ -67,7 +67,7 @@ into a window it drops to the normal z-order and the taskbar returns.
 | Arrange windows into a grid | **Ctrl+G** (Miro "clean up" style) |
 | Keyboard: tile focus / move | **Arrow** (focus) · **Shift+Arrow** (move) |
 | Minimap (bird's-eye) | Bottom-right corner · click = jump there (toggle in panel) |
-| Sticky note (annotation) | **Ctrl+Shift+N** = note at cursor · type, **Tab**=color, **Enter/Esc**=done |
+| Sticky note (annotation) | **Ctrl+Shift+N** (or **double-click** empty canvas) = note · type, **Tab**=color, **Enter/Esc**=done |
 | Move / edit / resize / delete note | Left-drag · double-click = edit · bottom-right corner = resize · hover **✕** = delete |
 | Zone frame (group windows) | **Ctrl+Shift+Z** = labeled region · drag the **title bar** to move it **and the windows inside it** (body is click-through) · corner = resize |
 | Connector arrow | **Ctrl+drag** from one window to another · hover the midpoint **✕** to remove (session-only) |

@@ -4110,6 +4110,14 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             ReleaseCapture();
             TrySwapIn(hit, cp);
         }
+        else if (g_activeTile < 0) // M60: boş tuvale çift tık = hızlı yapışkan not (boşsa oto-silinir)
+        {
+            Note n;
+            n.wx = g_cam.x + cp.x / g_cam.zoom - NOTE_W / 2;
+            n.wy = g_cam.y + cp.y / g_cam.zoom - NOTE_H / 2;
+            g_notes.push_back(n);
+            g_editNote = (int)g_notes.size() - 1;
+        }
         return 0;
     }
     case WM_LBUTTONDOWN:

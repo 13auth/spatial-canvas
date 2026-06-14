@@ -65,7 +65,7 @@ dalınca normal z-düzenine iner ve görev çubuğu geri gelir.
 | Pencereleri ızgaraya diz | **Ctrl+G** (Miro "clean up" tarzı) |
 | Klavye: tile odağı / taşı | **Ok** (odak) · **Shift+Ok** (taşı) |
 | Minimap (kuşbakışı) | Sağ-alt köşe · tıkla = oraya zıpla (panelden kapatılır) |
-| Yapışkan not (anotasyon) | **Ctrl+Shift+N** = imleçte not · yaz, **Tab**=renk, **Enter/Esc**=bitir |
+| Yapışkan not (anotasyon) | **Ctrl+Shift+N** (ya da boş tuvale **çift tık**) = not · yaz, **Tab**=renk, **Enter/Esc**=bitir |
 | Notu taşı / düzenle / boyutla / sil | Sol sürükle · çift tık = düzenle · sağ-alt köşe = boyutlandır · hover **✕** = sil |
 | Bölge çerçevesi (pencere grupla) | **Ctrl+Shift+Z** = etiketli bölge · **başlık çubuğundan** sürükle = bölgeyi **ve içindeki pencereleri** taşı (gövde tıklama-geçirgen) · köşe = boyutlandır |
 | Bağlayıcı ok | Bir pencereden diğerine **Ctrl+sürükle** · orta-nokta **✕** ile sil (oturum-içi) |

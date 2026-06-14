@@ -3,6 +3,11 @@
 Spatial Canvas — notable user-facing changes. Versioning is milestone-based
 (M = milestone). Dates are 2026.
 
+## 0.55.0 — Notes/zones/links polish
+- New notes and zones inherit the **last-used color**.
+- **Delete** removes the note or zone you're hovering (when nothing is selected).
+- The **hovered connector** is highlighted so it's clear which one the ✕ removes.
+
 ## 0.54.0 — Canvas polish
 - **Double-click** empty canvas to drop a sticky note (whiteboard-style).
 - Clicking away from a note/zone you're editing now finishes the edit.

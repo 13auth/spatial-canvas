@@ -4144,6 +4144,21 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             return 0;
         }
         if (HandlePanelClick(cp)) return 0; // M5: panel önceliklidir
+        // M61: düzenlenen not/zon DIŞINA tık = düzenlemeyi bitir (boş not terk edilir).
+        // Düzenlenen nesnenin üstüne tık = mevcut sürükle/✕ handler'ı devralır.
+        if (g_activeTile < 0 && (g_editNote >= 0 || g_editZone >= 0))
+        {
+            float ewx = g_cam.x + cp.x / g_cam.zoom, ewy = g_cam.y + cp.y / g_cam.zoom;
+            if (g_editNote >= 0 && g_editNote < (int)g_notes.size() && NoteAt(ewx, ewy) != g_editNote)
+            {
+                if (g_notes[g_editNote].text.empty()) g_notes.erase(g_notes.begin() + g_editNote);
+                g_editNote = -1; SaveNotes();
+            }
+            if (g_editZone >= 0 && g_editZone < (int)g_zones.size() && ZoneTitleAt(ewx, ewy) != g_editZone)
+            {
+                g_editZone = -1; SaveZones();
+            }
+        }
         // M51: yeni-sürüm pill'ine tık → release sayfasını tarayıcıda aç (sadece bildirim)
         if (g_updateAvail && g_updateRect.right > g_updateRect.left &&
             cp.x >= g_updateRect.left && cp.x <= g_updateRect.right &&

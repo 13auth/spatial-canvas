@@ -185,6 +185,7 @@ namespace
     std::wstring g_searchText;
     std::vector<int> g_matches;
     std::vector<int> g_noteMatches; // M49: eşleşen not indeksleri (tile'lardan sonra gezilir)
+    std::vector<int> g_zoneMatches; // M67: eşleşen bölge indeksleri (notlardan sonra gezilir)
     int g_searchSel = 0;            // birleşik indeks: [0..g_matches) tile, [g_matches..) not
     D2D1_RECT_F g_searchBtnRect{};  // M11: üst-orta Ara butonu
     // M11: çoklu seçim + çoğaltma
@@ -1357,6 +1358,17 @@ static void DrawZones()
         D2D1_ROUNDED_RECT srr{ sr, 10, 10 };
         col.a = editing ? 1.0f : 0.9f; g_brNote->SetColor(col);
         g_d2dRT->DrawRoundedRectangle(srr, g_brNote.get(), editing ? 4.0f : 2.5f); // renkli kenar (ekran-sabit)
+        // M67: arama eşleşmesi - amber halka (seçili olan kalın)
+        if (g_searchOpen && !g_searchText.empty() &&
+            std::find(g_zoneMatches.begin(), g_zoneMatches.end(), i) != g_zoneMatches.end())
+        {
+            int selZone = -1;
+            int base = (int)(g_matches.size() + g_noteMatches.size());
+            if (g_searchSel >= base && g_searchSel - base < (int)g_zoneMatches.size())
+                selZone = g_zoneMatches[g_searchSel - base];
+            g_d2dRT->DrawRoundedRectangle(D2D1_ROUNDED_RECT{ D2D1::RectF(sx - 3, sy - 3, sx + sw + 3, sy + sh + 3), 10, 10 },
+                g_brSel.get(), (i == selZone) ? 4.0f : 2.0f);
+        }
         float barH = std::max(ZONE_BAR * g_cam.zoom, 22.0f); // başlık çubuğu - min okunur yükseklik
         D2D1_RECT_F bar = D2D1::RectF(sx, sy, sx + sw, sy + barH);
         D2D1_ROUNDED_RECT barr{ bar, 8, 8 };
@@ -1673,11 +1685,13 @@ static void DrawOverlay()
         std::wstring st = TL(L"Search: ", L"Ara: ") + g_searchText + L"_";
         if (searching)
         {
-            int total = (int)(g_matches.size() + g_noteMatches.size()); // M49: tile+not
+            int total = (int)(g_matches.size() + g_noteMatches.size() + g_zoneMatches.size()); // M49/M67
             st += L"   (" + std::to_wstring(total == 0 ? 0 : g_searchSel + 1)
                 + L"/" + std::to_wstring(total) + L")";
             if (!g_noteMatches.empty()) // not eşleşmesi varsa belirt
                 st += L"  " + std::to_wstring((int)g_noteMatches.size()) + TL(L" note", L" not");
+            if (!g_zoneMatches.empty()) // M67: bölge eşleşmesi
+                st += L"  " + std::to_wstring((int)g_zoneMatches.size()) + TL(L" zone", L" bölge");
         }
         g_d2dRT->DrawText(st.c_str(), (UINT32)st.size(), g_textFmtL.get(),
             D2D1::RectF(box.left + 16, box.top, box.right - 12, box.bottom), g_brText.get());
@@ -3544,6 +3558,7 @@ static void UpdateMatches()
 {
     g_matches.clear();
     g_noteMatches.clear(); // M49
+    g_zoneMatches.clear(); // M67
     std::wstring q = LowerW(g_searchText);
     if (q.empty()) { g_searchSel = 0; return; }
     for (int i = 0; i < (int)g_tiles.size(); i++)
@@ -3555,7 +3570,10 @@ static void UpdateMatches()
     for (int i = 0; i < (int)g_notes.size(); i++) // M49: not metninde de ara
         if (LowerW(g_notes[i].text).find(q) != std::wstring::npos)
             g_noteMatches.push_back(i);
-    if (g_searchSel >= (int)(g_matches.size() + g_noteMatches.size())) g_searchSel = 0;
+    for (int i = 0; i < (int)g_zones.size(); i++) // M67: bölge başlığında da ara
+        if (LowerW(g_zones[i].title).find(q) != std::wstring::npos)
+            g_zoneMatches.push_back(i);
+    if (g_searchSel >= (int)(g_matches.size() + g_noteMatches.size() + g_zoneMatches.size())) g_searchSel = 0;
 }
 
 static void CloseSearch()
@@ -3564,6 +3582,7 @@ static void CloseSearch()
     g_searchText.clear();
     g_matches.clear();
     g_noteMatches.clear(); // M49
+    g_zoneMatches.clear(); // M67
     g_searchSel = 0;
 }
 
@@ -3595,15 +3614,30 @@ static void FlyToNote(int i)
     g_swapArmed = true;
 }
 
-// M49: arama seçimi (birleşik) - tile mı not mu, ona uç
+// M67: kamerayı bölgeye uçur (okunur zoom; dalış yok)
+static void FlyToZone(int i)
+{
+    if (i < 0 || i >= (int)g_zones.size()) return;
+    g_momentum = false;
+    Zone& z = g_zones[i];
+    float zoom = std::clamp(std::min((float)g_sw / (z.w * 1.15f), (float)g_sh / (z.h * 1.15f)),
+        0.02f, g_set.diveZoom * 0.85f);
+    g_camT.zoom = zoom;
+    g_camT.x = z.wx + z.w / 2.0f - g_sw / (2.0f * zoom);
+    g_camT.y = z.wy + z.h / 2.0f - g_sh / (2.0f * zoom);
+    g_swapArmed = true;
+}
+
+// M49/M67: arama seçimi (birleşik) - tile / not / bölge, hangisiyse ona uç
 static void FlyToSearchSel()
 {
-    int nt = (int)g_matches.size();
+    int nt = (int)g_matches.size(), nn = (int)g_noteMatches.size();
     if (g_searchSel < nt) FlyToTile(g_matches[g_searchSel]);
+    else if (g_searchSel < nt + nn) FlyToNote(g_noteMatches[g_searchSel - nt]);
     else
     {
-        int ni = g_searchSel - nt;
-        if (ni >= 0 && ni < (int)g_noteMatches.size()) FlyToNote(g_noteMatches[ni]);
+        int zi = g_searchSel - nt - nn;
+        if (zi >= 0 && zi < (int)g_zoneMatches.size()) FlyToZone(g_zoneMatches[zi]);
     }
 }
 
@@ -4671,7 +4705,7 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         if (g_searchOpen) // M9: arama modu tüm tuşları yutar
         {
             if (vk == VK_ESCAPE || is(g_set.kbSearch)) { CloseSearch(); return 0; }
-            int total = (int)(g_matches.size() + g_noteMatches.size()); // M49: tile+not
+            int total = (int)(g_matches.size() + g_noteMatches.size() + g_zoneMatches.size()); // M49/M67
             if (vk == VK_RETURN)
             {
                 if (total > 0) FlyToSearchSel(); // M49: tile ya da nota uç

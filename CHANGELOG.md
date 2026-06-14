@@ -3,6 +3,11 @@
 Spatial Canvas — notable user-facing changes. Versioning is milestone-based
 (M = milestone). Dates are 2026.
 
+## 0.51.0 — Zones group & tidy windows
+- Dragging a zone's title bar now **moves the windows inside it** along with it.
+- Each zone has a small **grid button** (next to the ✕) that **tidies the
+  windows inside it** into a grid — group, then clean up, like a real frame.
+
 ## 0.50.0 — Zone frames
 - **Zone frames** — press `Ctrl+Shift+Z` to drop a labeled, colored region you
   can use to group windows spatially (FigJam-style). Drag the **title bar** to

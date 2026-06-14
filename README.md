@@ -9,7 +9,7 @@ zoomable canvas. Instead of three monitors (or alongside them), one
 "bird's-eye workspace": zoom out, see everything; zoom in, teleport into the
 real window and work; pull back with a thumb button.
 
-**Version:** 0.50.0 (M0–M54) · **Platform:** Windows 11
+**Version:** 0.51.0 (M0–M56) · **Platform:** Windows 11
 (Windows.Graphics.Capture) · **Status:** Active prototype / dogfood
 
 ## Install

@@ -1515,17 +1515,19 @@ static void DrawConnectors()
         edgePoint(cbx, cby, hwb, hhb, cax, cay, bx, by);
         float sax = (ax - g_cam.x) * g_cam.zoom, say = (ay - g_cam.y) * g_cam.zoom;
         float sbx = (bx - g_cam.x) * g_cam.zoom, sby = (by - g_cam.y) * g_cam.zoom;
-        g_brPick->SetOpacity(0.9f);
-        g_d2dRT->DrawLine(D2D1::Point2F(sax, say), D2D1::Point2F(sbx, sby), g_brPick.get(), 2.5f);
+        float mx = (sax + sbx) / 2, my = (say + sby) / 2; // orta nokta (✕ + hover)
+        bool chov = fabsf((float)cur.x - mx) < 13 && fabsf((float)cur.y - my) < 13; // M66
+        float lw = chov ? 3.8f : 2.5f; // M66: hover'da kalın+parlak (hangi çizgi silinecek belli)
+        g_brPick->SetOpacity(chov ? 1.0f : 0.9f);
+        g_d2dRT->DrawLine(D2D1::Point2F(sax, say), D2D1::Point2F(sbx, sby), g_brPick.get(), lw);
         float dx = sbx - sax, dy = sby - say, len = sqrtf(dx * dx + dy * dy);
         if (len > 1) { dx /= len; dy /= len; const float ah = 13.0f; // ok başı (b ucunda)
             D2D1_POINT_2F tip{ sbx, sby };
-            g_d2dRT->DrawLine(tip, D2D1::Point2F(sbx - dx * ah - dy * ah * 0.55f, sby - dy * ah + dx * ah * 0.55f), g_brPick.get(), 2.5f);
-            g_d2dRT->DrawLine(tip, D2D1::Point2F(sbx - dx * ah + dy * ah * 0.55f, sby - dy * ah - dx * ah * 0.55f), g_brPick.get(), 2.5f);
+            g_d2dRT->DrawLine(tip, D2D1::Point2F(sbx - dx * ah - dy * ah * 0.55f, sby - dy * ah + dx * ah * 0.55f), g_brPick.get(), lw);
+            g_d2dRT->DrawLine(tip, D2D1::Point2F(sbx - dx * ah + dy * ah * 0.55f, sby - dy * ah - dx * ah * 0.55f), g_brPick.get(), lw);
         }
         g_brPick->SetOpacity(1.0f);
-        float mx = (sax + sbx) / 2, my = (say + sby) / 2; // orta nokta hover ✕ (sil)
-        if (fabsf((float)cur.x - mx) < 13 && fabsf((float)cur.y - my) < 13)
+        if (chov) // orta nokta hover ✕ (sil)
         {
             D2D1_RECT_F xr = D2D1::RectF(mx - 11, my - 11, mx + 11, my + 11);
             D2D1_ROUNDED_RECT xrr{ xr, 6, 6 };

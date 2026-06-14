@@ -252,6 +252,7 @@ namespace
     // M46: w/h not başına (yeniden boyutlandırılabilir; uzun metin taşmasın)
     struct Note { float wx = 0, wy = 0, w = 240.0f, h = 150.0f; int color = 0; std::wstring text; };
     std::vector<Note> g_notes;
+    int g_lastNoteColor = 0, g_lastZoneColor = 0; // M64: son kullanılan renk (yeni nesne miras alır)
     int g_editNote = -1;    // düzenlenen not indeksi (-1 = yok)
     int g_dragNote = -1;    // sürüklenen not indeksi
     int g_resizeNote = -1;  // M46: yeniden boyutlandırılan not indeksi
@@ -4126,7 +4127,7 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         }
         else if (g_activeTile < 0) // M60: boş tuvale çift tık = hızlı yapışkan not (boşsa oto-silinir)
         {
-            Note n;
+            Note n; n.color = g_lastNoteColor; // M64
             n.wx = g_cam.x + cp.x / g_cam.zoom - NOTE_W / 2;
             n.wy = g_cam.y + cp.y / g_cam.zoom - NOTE_H / 2;
             g_notes.push_back(n);
@@ -4701,6 +4702,7 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             if (vk == VK_TAB) // renk döngüsü
             {
                 g_notes[g_editNote].color = (g_notes[g_editNote].color + 1) & 3;
+                g_lastNoteColor = g_notes[g_editNote].color; // M64
                 SaveNotes(); return 0;
             }
             if (vk == VK_DELETE)
@@ -4715,7 +4717,7 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         {
             if (g_editZone >= (int)g_zones.size()) { g_editZone = -1; return 0; }
             if (vk == VK_ESCAPE || vk == VK_RETURN) { g_editZone = -1; SaveZones(); return 0; }
-            if (vk == VK_TAB) { g_zones[g_editZone].color = (g_zones[g_editZone].color + 1) & 3; SaveZones(); return 0; }
+            if (vk == VK_TAB) { g_zones[g_editZone].color = (g_zones[g_editZone].color + 1) & 3; g_lastZoneColor = g_zones[g_editZone].color; SaveZones(); return 0; } // M64
             if (vk == VK_DELETE) { g_zones.erase(g_zones.begin() + g_editZone); g_editZone = -1; SaveZones(); return 0; }
             return 0;
         }
@@ -4799,7 +4801,7 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         if (mods == 5 && vk == 'N' && g_activeTile < 0)
         {
             POINT cur{}; GetCursorPos(&cur); ScreenToClient(hwnd, &cur);
-            Note n;
+            Note n; n.color = g_lastNoteColor; // M64
             n.wx = g_cam.x + cur.x / g_cam.zoom - NOTE_W / 2;
             n.wy = g_cam.y + cur.y / g_cam.zoom - NOTE_H / 2;
             g_notes.push_back(n);
@@ -4817,7 +4819,7 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         if (mods == 5 && vk == 'Z' && g_activeTile < 0)
         {
             POINT cur{}; GetCursorPos(&cur); ScreenToClient(hwnd, &cur);
-            Zone z;
+            Zone z; z.color = g_lastZoneColor; // M64
             z.wx = g_cam.x + cur.x / g_cam.zoom - ZONE_W / 2;
             z.wy = g_cam.y + cur.y / g_cam.zoom - ZONE_BAR / 2; // başlık çubuğu imleçte
             g_zones.push_back(z);

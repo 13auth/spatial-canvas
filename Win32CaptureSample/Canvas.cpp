@@ -108,7 +108,7 @@ struct Tile
 struct Key { int vk = 0; int mods = 0; }; // mods: 1=Ctrl 2=Alt 4=Shift
 
 // M48: uygulama sürümü (app.rc VERSIONINFO ile SENKRON tut - RELEASE.md sürüm listesinde)
-constexpr const wchar_t* APP_VERSION = L"0.57.0";
+constexpr const wchar_t* APP_VERSION = L"0.58.0";
 
 struct Settings
 {
@@ -283,6 +283,13 @@ namespace
     HWND g_connectFrom = nullptr;     // bağlantının başladığı tile
     int g_connDelIdx = -1;            // hover ✕'in ait olduğu bağlantı
     D2D1_RECT_F g_connDelRect{};
+    // M72: sil-geri-al (Ctrl+Z) - son silinen overlay nesnelerini saklar (LIFO, sınırlı).
+    // Yalnız not/zone/bağlayıcı; pencere kaldırma kapsam dışı.
+    struct UndoRec { int kind = 0; Note note; Zone zone; Connector conn; }; // kind: 0=not 1=zone 2=bağlayıcı
+    std::vector<UndoRec> g_undo;
+    static void PushUndoNote(const Note& n) { g_undo.push_back({ 0, n, {}, {} }); if (g_undo.size() > 20) g_undo.erase(g_undo.begin()); }
+    static void PushUndoZone(const Zone& z) { g_undo.push_back({ 1, {}, z, {} }); if (g_undo.size() > 20) g_undo.erase(g_undo.begin()); }
+    static void PushUndoConn(const Connector& c) { g_undo.push_back({ 2, {}, {}, c }); if (g_undo.size() > 20) g_undo.erase(g_undo.begin()); }
     bool g_panning = false;
     bool g_minimapDrag = false;     // M70: minimap'te sürükleyerek sürekli pan
     POINT g_curClient{};            // M19: kare-başı tek imleç okuması (client)
@@ -1878,7 +1885,8 @@ static void DrawOverlay()
             L"Ctrl+Shift+N:  yapışkan not (Tab=renk)\n"
             L"Ctrl+Shift+Z:  bölge çerçevesi (başlıktan sürükle)\n"
             L"Ctrl+Shift+S:  tuvali PNG'ye aktar\n"
-            L"Delete:  seçilileri çıkar\n"
+            L"Delete:  seçilileri / hover'daki not-bölgeyi çıkar\n"
+            L"Ctrl+Z:  son silinen not/bölge/bağlayıcıyı geri al\n"
             L"Ctrl+Shift+1..4:  yer imi kaydet\n"
             L"Ctrl+1..4:  yer imine git\n"
             L"Shift+sürükle:  yapışık kümeyi taşı\n"
@@ -1895,7 +1903,8 @@ static void DrawOverlay()
             L"Ctrl+Shift+N:  sticky note (Tab=color)\n"
             L"Ctrl+Shift+Z:  zone frame (drag the title bar)\n"
             L"Ctrl+Shift+S:  export canvas to PNG\n"
-            L"Delete:  remove selected\n"
+            L"Delete:  remove selected / hovered note-zone\n"
+            L"Ctrl+Z:  undo last note/zone/link delete\n"
             L"Ctrl+Shift+1..4:  save bookmark\n"
             L"Ctrl+1..4:  go to bookmark\n"
             L"Shift+drag:  move snapped cluster\n"
@@ -2029,6 +2038,22 @@ static void SaveZones()
         for (auto& ch : t) if (ch == L'\n' || ch == L'\r') ch = L' ';
         f << (int)z.wx << L"|" << (int)z.wy << L"|" << (int)z.w << L"|" << (int)z.h
           << L"|" << (z.color & 3) << L"|" << t << L"\n";
+    }
+}
+
+// M72: son silinen not/zone/bağlayıcıyı geri getir (Ctrl+Z).
+static void RestoreUndo()
+{
+    if (g_undo.empty()) { ShowToast(TL(L"Nothing to undo", L"Geri alınacak bir şey yok")); return; }
+    UndoRec r = g_undo.back(); g_undo.pop_back();
+    if (r.kind == 0) { g_notes.push_back(r.note); SaveNotes();
+        ShowToast(TL(L"Note restored", L"Not geri geldi")); }
+    else if (r.kind == 1) { g_zones.push_back(r.zone); SaveZones();
+        ShowToast(TL(L"Zone restored", L"Bölge geri geldi")); }
+    else { // bağlayıcı: yalnız her iki pencere hâlâ yaşıyorsa anlamlı (ölü ise sonraki karede temizlenir)
+        if (r.conn.a && r.conn.b && IsWindow(r.conn.a) && IsWindow(r.conn.b))
+        { g_connectors.push_back(r.conn); ShowToast(TL(L"Link restored", L"Bağlayıcı geri geldi")); }
+        else ShowToast(TL(L"Link can't be restored (window closed)", L"Bağlayıcı geri gelemez (pencere kapandı)"));
     }
 }
 
@@ -3922,6 +3947,7 @@ static void ProcessIpcCommand(const std::wstring& cmd)
     else if (cmd == L"linktest" && g_tiles.size() >= 2) // M57: ilk iki tile'ı bağla (test)
         g_connectors.push_back({ g_tiles[0].source, g_tiles[1].source });
     else if (cmd == L"arrange") ArrangeGrid(); // M35
+    else if (cmd == L"undo") RestoreUndo(); // M72: son silineni geri getir
     else if (cmd == L"quit") PostQuitMessage(0);
     else if (starts(L"save:")) SaveNamedLayout(cmd.substr(5)); // M42
     else if (starts(L"load:")) LoadNamedLayout(cmd.substr(5));
@@ -4327,6 +4353,7 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             cp.x >= g_connDelRect.left && cp.x <= g_connDelRect.right &&
             cp.y >= g_connDelRect.top && cp.y <= g_connDelRect.bottom)
         {
+            PushUndoConn(g_connectors[g_connDelIdx]); // M72
             g_connectors.erase(g_connectors.begin() + g_connDelIdx);
             g_connDelIdx = -1;
             return 0;
@@ -4340,6 +4367,7 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             {
                 if (g_editNote == g_noteDelIdx) g_editNote = -1;
                 else if (g_editNote > g_noteDelIdx) g_editNote--;
+                PushUndoNote(g_notes[g_noteDelIdx]); // M72
                 g_notes.erase(g_notes.begin() + g_noteDelIdx);
                 g_noteDelIdx = -1; SaveNotes();
                 return 0;
@@ -4378,6 +4406,7 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             {
                 if (g_editZone == g_zoneDelIdx) g_editZone = -1;
                 else if (g_editZone > g_zoneDelIdx) g_editZone--;
+                PushUndoZone(g_zones[g_zoneDelIdx]); // M72
                 g_zones.erase(g_zones.begin() + g_zoneDelIdx);
                 g_zoneDelIdx = -1; SaveZones();
                 return 0;
@@ -4773,6 +4802,7 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             }
             if (vk == VK_DELETE)
             {
+                PushUndoNote(g_notes[g_editNote]); // M72
                 g_notes.erase(g_notes.begin() + g_editNote);
                 g_editNote = -1; SaveNotes(); return 0;
             }
@@ -4784,7 +4814,7 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             if (g_editZone >= (int)g_zones.size()) { g_editZone = -1; return 0; }
             if (vk == VK_ESCAPE || vk == VK_RETURN) { g_editZone = -1; SaveZones(); return 0; }
             if (vk == VK_TAB) { g_zones[g_editZone].color = (g_zones[g_editZone].color + 1) & 3; g_lastZoneColor = g_zones[g_editZone].color; SaveZones(); return 0; } // M64
-            if (vk == VK_DELETE) { g_zones.erase(g_zones.begin() + g_editZone); g_editZone = -1; SaveZones(); return 0; }
+            if (vk == VK_DELETE) { PushUndoZone(g_zones[g_editZone]); g_zones.erase(g_zones.begin() + g_editZone); g_editZone = -1; SaveZones(); return 0; } // M72
             return 0;
         }
         // M21: ok tuşları = odak gezinme (autorepeat'ten ÖNCE: tutunca adımlasın)
@@ -4852,9 +4882,9 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         if (vk == VK_DELETE && g_selSet.empty() && g_activeTile < 0 && g_editNote < 0 && g_editZone < 0)
         {
             if (g_hoverNote >= 0 && g_hoverNote < (int)g_notes.size())
-            { g_notes.erase(g_notes.begin() + g_hoverNote); g_hoverNote = -1; SaveNotes(); return 0; }
+            { PushUndoNote(g_notes[g_hoverNote]); g_notes.erase(g_notes.begin() + g_hoverNote); g_hoverNote = -1; SaveNotes(); return 0; } // M72
             if (g_hoverZone >= 0 && g_hoverZone < (int)g_zones.size())
-            { g_zones.erase(g_zones.begin() + g_hoverZone); g_hoverZone = -1; SaveZones(); return 0; }
+            { PushUndoZone(g_zones[g_hoverZone]); g_zones.erase(g_zones.begin() + g_hoverZone); g_hoverZone = -1; SaveZones(); return 0; } // M72
         }
         if (mods == 1 && (vk == 'C' || vk == 'V') && g_activeTile < 0)
         {
@@ -4862,6 +4892,8 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             if (vk == 'C') CopySelection(cur); else PasteCopies(cur);
             return 0;
         }
+        // M72: Ctrl+Z - son silinen notu/bölgeyi/bağlayıcıyı geri getir
+        if (mods == 1 && vk == 'Z' && g_activeTile < 0) { RestoreUndo(); return 0; }
         // M22: Ctrl+P - imleç altındaki tile'ı ekrana sabitle/çöz
         if (mods == 1 && vk == 'P' && g_activeTile < 0)
         {

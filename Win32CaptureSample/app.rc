@@ -1,8 +1,8 @@
 1 ICON "app.ico"
 
 1 VERSIONINFO
-FILEVERSION 0,57,0,0
-PRODUCTVERSION 0,57,0,0
+FILEVERSION 0,58,0,0
+PRODUCTVERSION 0,58,0,0
 BEGIN
   BLOCK "StringFileInfo"
   BEGIN
@@ -10,9 +10,9 @@ BEGIN
     BEGIN
       VALUE "CompanyName", "13auth"
       VALUE "FileDescription", "Spatial Canvas - sonsuz tuval pencere yoneticisi"
-      VALUE "FileVersion", "0.57.0"
+      VALUE "FileVersion", "0.58.0"
       VALUE "ProductName", "Spatial Canvas"
-      VALUE "ProductVersion", "0.57.0"
+      VALUE "ProductVersion", "0.58.0"
       VALUE "OriginalFilename", "SpatialCanvas.exe"
       VALUE "InternalName", "SpatialCanvas"
       VALUE "LegalCopyright", "(c) 2026 Batuhan Demirbilek / 13auth - Proprietary, source-available - uses robmikh.common (MIT)"

@@ -9,7 +9,7 @@ zoomable canvas. Instead of three monitors (or alongside them), one
 "bird's-eye workspace": zoom out, see everything; zoom in, teleport into the
 real window and work; pull back with a thumb button.
 
-**Version:** 0.57.0 (M0–M70) · **Platform:** Windows 11
+**Version:** 0.58.0 (M0–M72) · **Platform:** Windows 11
 (Windows.Graphics.Capture) · **Status:** Active prototype / dogfood
 
 ## Install
@@ -72,6 +72,7 @@ into a window it drops to the normal z-order and the taskbar returns.
 | Zone frame (group windows) | **Ctrl+Shift+Z** = labeled region · drag the **title bar** to move it **and the windows inside it** (body is click-through) · corner = resize |
 | Connector arrow | **Ctrl+drag** from one window to another · hover the midpoint **✕** to remove (session-only) |
 | Export canvas to PNG | **Ctrl+Shift+S** (saved to your Pictures folder) |
+| Undo last delete | **Ctrl+Z** (restores the last removed note / zone / connector) |
 | All shortcuts | **F1** |
 | **Close** a window (the app) | Hover → **✕** top-right (the app's own save dialog appears) |
 | Settings panel | Top-left **⚙** or S |

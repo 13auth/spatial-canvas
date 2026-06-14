@@ -1,13 +1,19 @@
 # Spatial Canvas - release paketleme
 # Release x64 derler, exe + LICENSE + README'yi dist\SpatialCanvas-v<ver>.zip'e koyar.
 # Exe statik CRT + OS WinRT ile baglidir; VC redist GEREKMEZ (tek dosya dagitim).
-# Kullanim:  pwsh -File package.ps1 [-Version 0.46.0] [-SkipBuild]
+# Kullanim:  pwsh -File package.ps1 [-Version 0.58.0] [-SkipBuild]
+# -Version verilmezse VERSION dosyasindan okunur (tek dogruluk kaynagi).
 param(
-    [string]$Version = "0.46.0",
+    [string]$Version = "",
     [switch]$SkipBuild
 )
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
+if (-not $Version) {
+    $vf = Join-Path $root "VERSION"
+    if (Test-Path $vf) { $Version = (Get-Content $vf -Raw).Trim() }
+    else { throw "VERSION dosyasi yok ve -Version verilmedi" }
+}
 $msbuild = "C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe"
 $exe = Join-Path $root "x64\Release\SpatialCanvas.exe"
 

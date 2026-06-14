@@ -3,6 +3,15 @@
 Spatial Canvas — notable user-facing changes. Versioning is milestone-based
 (M = milestone). Dates are 2026.
 
+## 0.58.0 — Undo + stability
+- **Undo (`Ctrl+Z`)** restores the last deleted **note, zone, or connector**
+  (up to the last 20) — no more fear of the Delete key.
+- Fix: a rare out-of-bounds read while a note/zone search result was selected.
+- Fix: dragging the minimap could leave a "ghost pan" if window focus was lost
+  mid-drag.
+- Fix: adding a note/zone (via scripting) while a search is open now updates the
+  result counts immediately.
+
 ## 0.57.0 — Minimap scrubbing + zone counts
 - **Drag the minimap** to pan around continuously (not just click-to-jump).
 - A **zone title shows how many windows are inside it**.

@@ -9,7 +9,7 @@ pencere yöneticisi. 3 monitör yerine (ya da 3 monitörle birlikte) tek bir
 "kuşbakışı çalışma alanı": uzaklaş, her şeyi gör; yakınlaş, gerçek pencereye
 ışınlan, çalış; başparmak tuşuyla geri çekil.
 
-**Sürüm:** 0.57.0 (M0–M70) · **Platform:** Windows 11
+**Sürüm:** 0.58.0 (M0–M72) · **Platform:** Windows 11
 (Windows.Graphics.Capture) · **Durum:** Aktif prototip / dogfood
 
 ## Kurulum
@@ -70,6 +70,7 @@ dalınca normal z-düzenine iner ve görev çubuğu geri gelir.
 | Bölge çerçevesi (pencere grupla) | **Ctrl+Shift+Z** = etiketli bölge · **başlık çubuğundan** sürükle = bölgeyi **ve içindeki pencereleri** taşı (gövde tıklama-geçirgen) · köşe = boyutlandır |
 | Bağlayıcı ok | Bir pencereden diğerine **Ctrl+sürükle** · orta-nokta **✕** ile sil (oturum-içi) |
 | Tuvali PNG'ye aktar | **Ctrl+Shift+S** (Resimler klasörüne kaydedilir) |
+| Son silmeyi geri al | **Ctrl+Z** (son silinen not / bölge / bağlayıcıyı geri getirir) |
 | Tüm kısayollar | **F1** |
 | Pencereyi **kapat** (uygulamayı) | Hover → sağ üstte **✕** (kendi kaydet-diyaloğu çıkar) |
 | Ayarlar paneli | Sol üst **⚙** veya S |

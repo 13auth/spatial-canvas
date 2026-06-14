@@ -4841,6 +4841,15 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         }
         // M35: Ctrl+G - tüm tile'ları düzgün ızgaraya diz
         if (mods == 1 && vk == 'G' && g_activeTile < 0) { ArrangeGrid(); return 0; }
+        // M68: Ctrl+A - tüm (pinned olmayan) pencereleri seç (sonra Ctrl+G / Delete / grup-taşı)
+        if (mods == 1 && vk == 'A' && g_activeTile < 0)
+        {
+            g_selSet.clear();
+            for (auto& t : g_tiles) if (!t.pinnedFlag) g_selSet.insert(t.source);
+            if (!g_selSet.empty()) ShowToast(std::to_wstring((int)g_selSet.size()) +
+                TL(L" windows selected", L" pencere seçildi"));
+            return 0;
+        }
         // M44: Ctrl+Shift+N - imleç konumunda yapışkan not oluştur + düzenle moduna gir
         if (mods == 5 && vk == 'N' && g_activeTile < 0)
         {

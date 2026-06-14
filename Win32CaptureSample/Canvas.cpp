@@ -1375,6 +1375,14 @@ static void DrawZones()
         col.a = 0.9f; g_brNote->SetColor(col); g_d2dRT->FillRoundedRectangle(barr, g_brNote.get());
         std::wstring disp = z.title;
         if (editing) disp += L"_";
+        else // M69: başlıkta içindeki pencere sayısı "(N)"
+        {
+            int cnt = 0;
+            for (auto& t : g_tiles) { if (t.pinnedFlag) continue;
+                float cx = t.wx + t.ww / 2, cy = t.wy + t.wh / 2;
+                if (cx >= z.wx && cx <= z.wx + z.w && cy >= z.wy && cy <= z.wy + z.h) cnt++; }
+            if (cnt > 0) disp += L"  (" + std::to_wstring(cnt) + L")";
+        }
         if (!disp.empty())
             g_d2dRT->DrawText(disp.c_str(), (UINT32)disp.size(), g_textFmtL.get(),
                 D2D1::RectF(sx + 12, sy, sx + sw - 52, sy + barH), g_brPanelBg.get());

@@ -284,6 +284,7 @@ namespace
     int g_connDelIdx = -1;            // hover ✕'in ait olduğu bağlantı
     D2D1_RECT_F g_connDelRect{};
     bool g_panning = false;
+    bool g_minimapDrag = false;     // M70: minimap'te sürükleyerek sürekli pan
     POINT g_curClient{};            // M19: kare-başı tek imleç okuması (client)
     bool g_firstRun = false;        // M20: ilk açılış ipucu kartı
     bool g_helpOpen = false;        // M20: F1 kısayol listesi
@@ -3209,6 +3210,7 @@ static void HandleDeviceLost()
     g_dragNote = -1; g_resizeNote = -1; // M44/M46: not sürükle/boyutlandır
     g_dragZone = -1; g_resizeZone = -1; g_zoneTiles.clear(); // M54/M55: zon sürükle/boyutlandır
     g_connecting = false; g_connectFrom = nullptr; // M57: bağlantı kurma
+    g_minimapDrag = false; // M70
     g_pinDrag = false; g_pinDragTile = -1; // M24 doğrulama: pin sürükleme de
     // 1) Cihaza bağlı TÜM kaynakları bırak (com_ptr.put() null ister)
     for (auto& t : g_tiles)
@@ -4130,7 +4132,8 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         {
             bool anyDrag = g_dragTile >= 0 || g_groupDrag || g_marquee || g_pinDrag ||
                            g_dragNote >= 0 || g_resizeNote >= 0 ||
-                           g_dragZone >= 0 || g_resizeZone >= 0 || g_connecting; // M54/M55/M57
+                           g_dragZone >= 0 || g_resizeZone >= 0 || g_connecting ||
+                           g_minimapDrag; // M54/M55/M57/M70
             if (!anyDrag) ReleaseCapture();
         }
         return 0;
@@ -4273,6 +4276,7 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             g_momentum = false;
             g_camT.x = twx - (g_sw / g_camT.zoom) / 2.0f;
             g_camT.y = twy - (g_sh / g_camT.zoom) / 2.0f;
+            g_minimapDrag = true; SetCapture(hwnd); // M70: sürükleyerek sürekli pan
             return 0;
         }
         // M24: sağ uygulama dock'u ikonu tıklaması (launcher.txt'yi başlat)
@@ -4480,6 +4484,7 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     }
 
     case WM_LBUTTONUP:
+        if (g_minimapDrag) { g_minimapDrag = false; if (!g_panning) ReleaseCapture(); return 0; } // M70
         if (g_connecting) // M57: bağlantıyı bırakılan tile'a tamamla
         {
             POINT up{ GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
@@ -4530,6 +4535,15 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     case WM_MOUSEMOVE:
     {
         POINT p{ GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
+        if (g_minimapDrag && g_mmScale > 0) // M70: minimap'te sürükle = sürekli pan
+        {
+            float twx = g_mmMinX + (p.x - g_mmX) / g_mmScale;
+            float twy = g_mmMinY + (p.y - g_mmY) / g_mmScale;
+            g_camT.x = twx - (g_sw / g_camT.zoom) / 2.0f;
+            g_camT.y = twy - (g_sh / g_camT.zoom) / 2.0f;
+            g_cam.x = g_camT.x; g_cam.y = g_camT.y; // anında takip (scrub hissi)
+            g_lastMouse = p; return 0;
+        }
         if (g_dragNote >= 0 && g_dragNote < (int)g_notes.size()) // M44: notu dünyada taşı
         {
             g_notes[g_dragNote].wx = g_cam.x + p.x / g_cam.zoom - g_noteGrabDX;

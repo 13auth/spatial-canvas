@@ -3,6 +3,10 @@
 Spatial Canvas — notable user-facing changes. Versioning is milestone-based
 (M = milestone). Dates are 2026.
 
+## 0.57.0 — Minimap scrubbing + zone counts
+- **Drag the minimap** to pan around continuously (not just click-to-jump).
+- A **zone title shows how many windows are inside it**.
+
 ## 0.56.0 — Search the whole canvas + select all
 - **Search (Ctrl+F)** now finds **zones** by title too (windows + notes + zones).
 - **Ctrl+A** selects all windows (then arrange / move / remove as a group).

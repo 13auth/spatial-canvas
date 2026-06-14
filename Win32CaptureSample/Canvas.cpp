@@ -1596,7 +1596,10 @@ static void DrawOverlay()
         {
             bool isMatch = std::find(g_matches.begin(), g_matches.end(), i)
                 != g_matches.end();
-            bool isSel = isMatch && !g_matches.empty() && g_matches[g_searchSel] == i;
+            // M71: g_searchSel birleşik indeks (tile+not+bölge); g_matches sınırı içinde değilse
+            // bir not/bölge seçili demektir, tile seçimi yok -> OOB okumayı engelle.
+            bool isSel = isMatch && g_searchSel >= 0
+                && g_searchSel < (int)g_matches.size() && g_matches[g_searchSel] == i;
             if (!isMatch)
                 g_d2dRT->FillRectangle(D2D1::RectF(sx, sy, sx + sw, sy + sh), g_brBg.get());
             else
@@ -3911,6 +3914,7 @@ static void ProcessIpcCommand(const std::wstring& cmd)
         z.wy = g_cam.y + (g_sh / g_cam.zoom) / 2.0f - ZONE_H / 2;
         if (z.title.size() > 80) z.title.resize(80);
         g_zones.push_back(z); SaveZones();
+        if (g_searchOpen) UpdateMatches(); // M71: arama açıksa eşleşmeleri/indeksi tazele
         ShowToast(TL(L"Zone added", L"Bölge eklendi"));
     }
     else if (cmd == L"zonetidy" && !g_zones.empty()) // M56: son zonu içinden düzenle (test/scripting)
@@ -3950,6 +3954,7 @@ static void ProcessIpcCommand(const std::wstring& cmd)
         if (nt.text.size() > 280) nt.text.resize(280);
         g_notes.push_back(nt);
         SaveNotes();
+        if (g_searchOpen) UpdateMatches(); // M71: arama açıksa eşleşmeleri/indeksi tazele
         ShowToast(TL(L"Note added", L"Not eklendi"));
     }
 }
@@ -4139,6 +4144,7 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         return 0;
     case WM_CAPTURECHANGED: // M57: capture beklenmedik şekilde gitti - bağlantı kurmayı iptal et
         g_connecting = false; g_connectFrom = nullptr;
+        g_minimapDrag = false; // M71: capture dışarıdan alındıysa minimap pan'ı takılı kalmasın
         return 0;
     case WM_LBUTTONDBLCLK:
     {

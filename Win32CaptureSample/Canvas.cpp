@@ -4068,9 +4068,13 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         // boyutlandır sırasında orta-tık+bırakma sürüklemeyi koparıyordu)
         {
             bool anyDrag = g_dragTile >= 0 || g_groupDrag || g_marquee || g_pinDrag ||
-                           g_dragNote >= 0 || g_resizeNote >= 0;
+                           g_dragNote >= 0 || g_resizeNote >= 0 ||
+                           g_dragZone >= 0 || g_resizeZone >= 0 || g_connecting; // M54/M55/M57
             if (!anyDrag) ReleaseCapture();
         }
+        return 0;
+    case WM_CAPTURECHANGED: // M57: capture beklenmedik şekilde gitti - bağlantı kurmayı iptal et
+        g_connecting = false; g_connectFrom = nullptr;
         return 0;
     case WM_LBUTTONDBLCLK:
     {
@@ -4727,6 +4731,11 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         if (g_activeTile < 0 && vk == VK_RETURN && mods == 0 && g_focusWnd)
         {
             FocusDive(); return 0;
+        }
+        if (vk == VK_ESCAPE && g_connecting) // M57: bağlantı kurmayı iptal et
+        {
+            g_connecting = false; g_connectFrom = nullptr;
+            if (!g_panning) ReleaseCapture(); return 0;
         }
         if (vk == VK_ESCAPE && mods == 0 && g_focusWnd && g_activeTile < 0)
         {

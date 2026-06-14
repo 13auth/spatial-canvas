@@ -4782,6 +4782,14 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         }
         // M11: sabit kısayollar (Delete: seçilileri çıkar, Ctrl+C/V: çoğalt)
         if (vk == VK_DELETE && !g_selSet.empty()) { RemoveSelected(); return 0; }
+        // M65: seçim yokken Delete = hover'daki notu/bölgeyi sil (✕'ten hızlı)
+        if (vk == VK_DELETE && g_selSet.empty() && g_activeTile < 0 && g_editNote < 0 && g_editZone < 0)
+        {
+            if (g_hoverNote >= 0 && g_hoverNote < (int)g_notes.size())
+            { g_notes.erase(g_notes.begin() + g_hoverNote); g_hoverNote = -1; SaveNotes(); return 0; }
+            if (g_hoverZone >= 0 && g_hoverZone < (int)g_zones.size())
+            { g_zones.erase(g_zones.begin() + g_hoverZone); g_hoverZone = -1; SaveZones(); return 0; }
+        }
         if (mods == 1 && (vk == 'C' || vk == 'V') && g_activeTile < 0)
         {
             POINT cur{}; GetCursorPos(&cur); ScreenToClient(hwnd, &cur);

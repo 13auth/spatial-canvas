@@ -3,6 +3,10 @@
 Spatial Canvas — notable user-facing changes. Versioning is milestone-based
 (M = milestone). Dates are 2026.
 
+## 0.56.0 — Search the whole canvas + select all
+- **Search (Ctrl+F)** now finds **zones** by title too (windows + notes + zones).
+- **Ctrl+A** selects all windows (then arrange / move / remove as a group).
+
 ## 0.55.0 — Notes/zones/links polish
 - New notes and zones inherit the **last-used color**.
 - **Delete** removes the note or zone you're hovering (when nothing is selected).

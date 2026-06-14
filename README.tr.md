@@ -9,7 +9,7 @@ pencere yöneticisi. 3 monitör yerine (ya da 3 monitörle birlikte) tek bir
 "kuşbakışı çalışma alanı": uzaklaş, her şeyi gör; yakınlaş, gerçek pencereye
 ışınlan, çalış; başparmak tuşuyla geri çekil.
 
-**Sürüm:** 0.55.0 (M0–M66) · **Platform:** Windows 11
+**Sürüm:** 0.56.0 (M0–M68) · **Platform:** Windows 11
 (Windows.Graphics.Capture) · **Durum:** Aktif prototip / dogfood
 
 ## Kurulum

@@ -108,7 +108,7 @@ struct Tile
 struct Key { int vk = 0; int mods = 0; }; // mods: 1=Ctrl 2=Alt 4=Shift
 
 // M48: uygulama sürümü (app.rc VERSIONINFO ile SENKRON tut - RELEASE.md sürüm listesinde)
-constexpr const wchar_t* APP_VERSION = L"0.55.0";
+constexpr const wchar_t* APP_VERSION = L"0.56.0";
 
 struct Settings
 {
@@ -1859,6 +1859,7 @@ static void DrawOverlay()
             L"Drag empty space:  multi-select\n"
             L"Bottom edge:  app dock";
         std::wstring colB = g_set.lang == 1 ?
+            L"Ctrl+A:  tüm pencereleri seç\n"
             L"Ctrl+C / Ctrl+V:  pencere çoğalt\n"
             L"Ctrl+P:  tile'ı ekrana sabitle (HUD)\n"
             L"Ctrl+G:  pencereleri ızgaraya diz\n"
@@ -1875,6 +1876,7 @@ static void DrawOverlay()
             L"Shift+1 / Shift+2:  tümünü / seçimi sığdır\n"
             L"F1 / ESC:  bu listeyi kapat"
           :
+            L"Ctrl+A:  select all windows\n"
             L"Ctrl+C / Ctrl+V:  duplicate window\n"
             L"Ctrl+P:  pin tile to screen (HUD)\n"
             L"Ctrl+G:  arrange windows into grid\n"

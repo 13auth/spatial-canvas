@@ -3,6 +3,12 @@
 Spatial Canvas — notable user-facing changes. Versioning is milestone-based
 (M = milestone). Dates are 2026.
 
+## 0.53.0 — Minimap shows everything + drag fixes
+- The minimap now shows **zones and connectors** too, not just windows and notes
+  — a complete bird's-eye of the canvas.
+- Fix: dragging a zone or drawing a connector no longer breaks if you click
+  another mouse button mid-drag; an in-progress connector cancels on Esc.
+
 ## 0.52.0 — Connector arrows
 - **Connector arrows** — **Ctrl+drag** from one window to another to draw an
   arrow linking them; the line follows the windows as they move. Hover the

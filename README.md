@@ -70,6 +70,7 @@ into a window it drops to the normal z-order and the taskbar returns.
 | Sticky note (annotation) | **Ctrl+Shift+N** = note at cursor · type, **Tab**=color, **Enter/Esc**=done |
 | Move / edit / resize / delete note | Left-drag · double-click = edit · bottom-right corner = resize · hover **✕** = delete |
 | Zone frame (group windows) | **Ctrl+Shift+Z** = labeled region · drag the **title bar** to move it **and the windows inside it** (body is click-through) · corner = resize |
+| Connector arrow | **Ctrl+drag** from one window to another · hover the midpoint **✕** to remove (session-only) |
 | Export canvas to PNG | **Ctrl+Shift+S** (saved to your Pictures folder) |
 | All shortcuts | **F1** |
 | **Close** a window (the app) | Hover → **✕** top-right (the app's own save dialog appears) |

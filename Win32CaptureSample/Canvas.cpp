@@ -273,6 +273,14 @@ namespace
     float g_zoneGrabDX = 0, g_zoneGrabDY = 0;
     constexpr float ZONE_W = 640.0f, ZONE_H = 440.0f, ZONE_MIN_W = 200.0f, ZONE_MIN_H = 140.0f;
     constexpr float ZONE_BAR = 34.0f; // başlık çubuğu yüksekliği (dünya-birimi)
+    // M57: bağlayıcı oklar (tile'lar arası ilişki çizgisi; Ctrl+sürükle ile kur).
+    // Oturum-içi (HWND kimliği restart'ta değişir → kalıcı değil, bilinçli).
+    struct Connector { HWND a = nullptr, b = nullptr; };
+    std::vector<Connector> g_connectors;
+    bool g_connecting = false;        // Ctrl+sürükle ile bağlantı kuruluyor
+    HWND g_connectFrom = nullptr;     // bağlantının başladığı tile
+    int g_connDelIdx = -1;            // hover ✕'in ait olduğu bağlantı
+    D2D1_RECT_F g_connDelRect{};
     bool g_panning = false;
     POINT g_curClient{};            // M19: kare-başı tek imleç okuması (client)
     bool g_firstRun = false;        // M20: ilk açılış ipucu kartı
@@ -1437,6 +1445,62 @@ static void DrawNotes()
     g_d2dRT->SetTransform(D2D1::Matrix3x2F::Identity());
 }
 
+// M57: bağlayıcı okları çiz (tile-merkezleri arası teal çizgi + ok başı). Ölü
+// bağlantıları (kapanan pencere) temizler; Ctrl+sürükle sırasında amber rubber-band.
+static void DrawConnectors()
+{
+    g_connDelIdx = -1;
+    if (g_connectors.empty() && !g_connecting) return;
+    POINT cur = g_curClient;
+    auto centerOf = [&](HWND h, float& cx, float& cy) -> bool {
+        for (auto& t : g_tiles) if (t.source == h && !t.pinnedFlag) {
+            cx = t.wx + t.ww / 2; cy = t.wy + t.wh / 2; return true; }
+        return false;
+    };
+    // ölü bağlantıları temizle (HWND artık canlı tile değil)
+    float tmp1, tmp2;
+    g_connectors.erase(std::remove_if(g_connectors.begin(), g_connectors.end(),
+        [&](const Connector& c){ return !centerOf(c.a, tmp1, tmp2) || !centerOf(c.b, tmp1, tmp2); }),
+        g_connectors.end());
+    for (int i = 0; i < (int)g_connectors.size(); i++)
+    {
+        float ax, ay, bx, by;
+        if (!centerOf(g_connectors[i].a, ax, ay) || !centerOf(g_connectors[i].b, bx, by)) continue;
+        float sax = (ax - g_cam.x) * g_cam.zoom, say = (ay - g_cam.y) * g_cam.zoom;
+        float sbx = (bx - g_cam.x) * g_cam.zoom, sby = (by - g_cam.y) * g_cam.zoom;
+        g_brPick->SetOpacity(0.9f);
+        g_d2dRT->DrawLine(D2D1::Point2F(sax, say), D2D1::Point2F(sbx, sby), g_brPick.get(), 2.5f);
+        float dx = sbx - sax, dy = sby - say, len = sqrtf(dx * dx + dy * dy);
+        if (len > 1) { dx /= len; dy /= len; const float ah = 13.0f; // ok başı (b ucunda)
+            D2D1_POINT_2F tip{ sbx, sby };
+            g_d2dRT->DrawLine(tip, D2D1::Point2F(sbx - dx * ah - dy * ah * 0.55f, sby - dy * ah + dx * ah * 0.55f), g_brPick.get(), 2.5f);
+            g_d2dRT->DrawLine(tip, D2D1::Point2F(sbx - dx * ah + dy * ah * 0.55f, sby - dy * ah - dx * ah * 0.55f), g_brPick.get(), 2.5f);
+        }
+        g_brPick->SetOpacity(1.0f);
+        float mx = (sax + sbx) / 2, my = (say + sby) / 2; // orta nokta hover ✕ (sil)
+        if (fabsf((float)cur.x - mx) < 13 && fabsf((float)cur.y - my) < 13)
+        {
+            D2D1_RECT_F xr = D2D1::RectF(mx - 11, my - 11, mx + 11, my + 11);
+            D2D1_ROUNDED_RECT xrr{ xr, 6, 6 };
+            g_d2dRT->FillRoundedRectangle(xrr, g_brBg.get());
+            g_d2dRT->DrawRoundedRectangle(xrr, g_brHover.get(), 2.0f);
+            g_d2dRT->DrawText(L"✕", 1, g_textFmt.get(), xr, g_brText.get());
+            g_connDelRect = xr; g_connDelIdx = i;
+        }
+    }
+    if (g_connecting && g_connectFrom) // rubber-band
+    {
+        float ax, ay;
+        if (centerOf(g_connectFrom, ax, ay))
+        {
+            float sax = (ax - g_cam.x) * g_cam.zoom, say = (ay - g_cam.y) * g_cam.zoom;
+            g_brSel->SetOpacity(0.8f);
+            g_d2dRT->DrawLine(D2D1::Point2F(sax, say), D2D1::Point2F((float)cur.x, (float)cur.y), g_brSel.get(), 2.5f);
+            g_brSel->SetOpacity(1.0f);
+        }
+    }
+}
+
 // Etiketler + hover vurgusu (D3D çiziminden sonra, Present'tan önce)
 static void DrawOverlay()
 {
@@ -1518,6 +1582,7 @@ static void DrawOverlay()
                 D2D1::RectF(tx, bg.top, bg.right - 6, bg.bottom), g_brText.get());
         }
     }
+    DrawConnectors(); // M57: bağlayıcı oklar (tile'ların üstünde)
     DrawZones(); // M54: bölgeler (notların altında, tile'ların üstünde - kenar+başlık)
     DrawNotes(); // M44: notlar tile'ların üstünde, paneller/marquee altında
     // M11: marquee seçim dikdörtgeni
@@ -1739,6 +1804,7 @@ static void DrawOverlay()
             L"Ctrl+Shift+1..4:  yer imi kaydet\n"
             L"Ctrl+1..4:  yer imine git\n"
             L"Shift+sürükle:  yapışık kümeyi taşı\n"
+            L"Ctrl+sürükle (tile→tile):  bağlayıcı ok\n"
             L"Alt+sürükle:  yapışma kapalı\n"
             L"Ok tuşları:  tile'lar arası odak · Shift+Ok: taşı\n"
             L"Shift+1 / Shift+2:  tümünü / seçimi sığdır\n"
@@ -1754,6 +1820,7 @@ static void DrawOverlay()
             L"Ctrl+Shift+1..4:  save bookmark\n"
             L"Ctrl+1..4:  go to bookmark\n"
             L"Shift+drag:  move snapped cluster\n"
+            L"Ctrl+drag (tile→tile):  connector arrow\n"
             L"Alt+drag:  snapping off\n"
             L"Arrow keys:  focus between tiles · Shift+Arrow: move\n"
             L"Shift+1 / Shift+2:  fit all / selection\n"
@@ -3066,6 +3133,7 @@ static void HandleDeviceLost()
     g_dragTile = -1; g_groupDrag = false; g_marquee = false; // etkileşim sıfırla
     g_dragNote = -1; g_resizeNote = -1; // M44/M46: not sürükle/boyutlandır
     g_dragZone = -1; g_resizeZone = -1; g_zoneTiles.clear(); // M54/M55: zon sürükle/boyutlandır
+    g_connecting = false; g_connectFrom = nullptr; // M57: bağlantı kurma
     g_pinDrag = false; g_pinDragTile = -1; // M24 doğrulama: pin sürükleme de
     // 1) Cihaza bağlı TÜM kaynakları bırak (com_ptr.put() null ister)
     for (auto& t : g_tiles)
@@ -3750,6 +3818,8 @@ static void ProcessIpcCommand(const std::wstring& cmd)
     }
     else if (cmd == L"zonetidy" && !g_zones.empty()) // M56: son zonu içinden düzenle (test/scripting)
         ArrangeZone((int)g_zones.size() - 1);
+    else if (cmd == L"linktest" && g_tiles.size() >= 2) // M57: ilk iki tile'ı bağla (test)
+        g_connectors.push_back({ g_tiles[0].source, g_tiles[1].source });
     else if (cmd == L"arrange") ArrangeGrid(); // M35
     else if (cmd == L"quit") PostQuitMessage(0);
     else if (starts(L"save:")) SaveNamedLayout(cmd.substr(5)); // M42
@@ -4120,6 +4190,15 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             if (cp.x >= bb.left && cp.x <= bb.right &&
                 cp.y >= bb.top && cp.y <= bb.bottom) return 0;
         }
+        // M57: bağlayıcı orta-nokta ✕ tıklaması = bağlantıyı sil (her şeyden önce)
+        if (g_activeTile < 0 && g_connDelIdx >= 0 && g_connDelIdx < (int)g_connectors.size() &&
+            cp.x >= g_connDelRect.left && cp.x <= g_connDelRect.right &&
+            cp.y >= g_connDelRect.top && cp.y <= g_connDelRect.bottom)
+        {
+            g_connectors.erase(g_connectors.begin() + g_connDelIdx);
+            g_connDelIdx = -1;
+            return 0;
+        }
         // M44: not etkileşimi (✕=sil, gövde=sürükle). Tile/marquee'den önce - not üstte yüzer.
         if (g_activeTile < 0)
         {
@@ -4203,6 +4282,13 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         int hit = HitTile(wx, wy);
         if (hit >= 0)
         {
+            // M57: Ctrl+sürükle bir tile'dan = bağlayıcı ok kur (taşıma yerine)
+            if ((GetKeyState(VK_CONTROL) & 0x8000) && !g_tiles[hit].pinnedFlag)
+            {
+                g_connecting = true; g_connectFrom = g_tiles[hit].source;
+                SetCapture(hwnd);
+                return 0;
+            }
             // M11: tıklanan tile seçiliyse ve seçim çoklu ise GRUP taşı
             if (g_selSet.count(g_tiles[hit].source) && g_selSet.size() > 1)
             {
@@ -4272,6 +4358,23 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     }
 
     case WM_LBUTTONUP:
+        if (g_connecting) // M57: bağlantıyı bırakılan tile'a tamamla
+        {
+            POINT up{ GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
+            int th = HitTile(g_cam.x + up.x / g_cam.zoom, g_cam.y + up.y / g_cam.zoom);
+            if (th >= 0 && g_tiles[th].source != g_connectFrom && !g_tiles[th].pinnedFlag)
+            {
+                HWND b = g_tiles[th].source;
+                bool dup = false;
+                for (auto& c : g_connectors)
+                    if ((c.a == g_connectFrom && c.b == b) || (c.a == b && c.b == g_connectFrom)) dup = true;
+                if (!dup) { g_connectors.push_back({ g_connectFrom, b });
+                    ShowToast(TL(L"Linked", L"Bağlandı")); }
+            }
+            g_connecting = false; g_connectFrom = nullptr;
+            if (!g_panning) ReleaseCapture();
+            return 0;
+        }
         if (g_dragNote >= 0) { g_dragNote = -1; SaveNotes(); // M44: not taşımayı kalıcılaştır
             if (!g_panning) ReleaseCapture(); return 0; }
         if (g_resizeNote >= 0) { g_resizeNote = -1; SaveNotes(); // M46: boyutu kalıcılaştır

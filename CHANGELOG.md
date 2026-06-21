@@ -3,6 +3,16 @@
 Spatial Canvas — notable user-facing changes. Versioning is milestone-based
 (M = milestone). Dates are 2026.
 
+## 0.60.0 — Focus mode + persistent labeled connectors
+- **Focus mode (M74)** — `Ctrl+Shift+D` dims everything except the window under the
+  cursor (same app) or your selected windows, so one context stands out in a wall of
+  windows. Opacity-based; respects per-window rules.
+- **Persistent connectors (M75)** — connector arrows now survive restarts. They are
+  exe-keyed and re-bound on relaunch (`connectors.txt`, or per-space `spaces.txt`),
+  instead of vanishing with the window handle.
+- **Connector labels (M75)** — draw an arrow and a label field opens: type, `Enter`.
+  The label rides on the arrow and persists. Leave it empty for an unlabeled arrow.
+
 ## 0.59.0 — Spaces (multiple canvases)
 - **Spaces (M73)** — virtual-desktop-style multiple canvases. `Ctrl+T` new space,
   `Ctrl+Tab` / `Ctrl+Shift+Tab` to switch. Each space keeps its own window set,

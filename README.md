@@ -51,6 +51,8 @@ screenshot proxy.** Pull back and it parks again, textures still live.
   `Ctrl+Tab` switch). Each keeps its own windows, camera, and notes/zones; the same
   window can live on several spaces, each at its own position (`Ctrl+Alt+1..9`).
   Top switcher strip (`[1][2][3] [+] [×]`); persists across restarts.
+- 🔦 **Focus mode** — `Ctrl+Shift+D` dims everything but the window/app under the
+  cursor (or your selection), so one context stands out in a wall of windows.
 - 🗺️ **Infinite zoomable canvas** — cursor-focused zoom, momentum pan, edge
   auto-pan, world-anchored dot grid. Windows keep fixed world positions.
 - 🪂 **Park & Swap dive** — zoom in to enter the real `HWND`; thumb-button (or
@@ -93,12 +95,13 @@ screenshot proxy.** Pull back and it parks again, textures still live.
 | Sticky note (annotation) | **Ctrl+Shift+N** (or **double-click** empty canvas) · type, **Tab**=color, **Enter/Esc**=done |
 | Move / edit / resize / delete note | Left-drag · double-click = edit · bottom-right corner = resize · hover **✕** = delete |
 | Zone frame (group windows) | **Ctrl+Shift+Z** = labeled region · drag the **title bar** to move it **and the windows inside** (body is click-through) · corner = resize |
-| Connector arrow | **Ctrl+drag** from one window to another · hover the midpoint **✕** to remove (session-only) |
+| Connector arrow (+ label) | **Ctrl+drag** window→window · type a label, **Enter** · midpoint **✕** removes · **persists** across restarts |
 | Export canvas to PNG | **Ctrl+Shift+S** (saved to your Pictures folder) |
 | Undo last delete | **Ctrl+Z** (restores the last removed note / zone / connector) |
 | **Space:** new / switch | **Ctrl+T** / **Ctrl+Tab** (Ctrl+Shift+Tab back) |
 | **Space:** add/remove window | **Ctrl+Alt+1–9** (pointed or selected window) |
 | **Space:** switch / new / delete | Top switcher strip: tab · **+** · **×** |
+| **Focus mode** (dim the rest) | **Ctrl+Shift+D** |
 | All shortcuts | **F1** |
 | **Close** a window (the app) | Hover → **✕** top-right (the app's own save dialog appears) |
 | Settings panel | Top-left **⚙** or S |

@@ -116,7 +116,7 @@ struct Tile
 struct Key { int vk = 0; int mods = 0; }; // mods: 1=Ctrl 2=Alt 4=Shift
 
 // M48: uygulama sürümü (app.rc VERSIONINFO ile SENKRON tut - RELEASE.md sürüm listesinde)
-constexpr const wchar_t* APP_VERSION = L"0.59.0";
+constexpr const wchar_t* APP_VERSION = L"0.60.0";
 
 struct Settings
 {
@@ -285,7 +285,9 @@ namespace
     constexpr float ZONE_BAR = 34.0f; // başlık çubuğu yüksekliği (dünya-birimi)
     // M57: bağlayıcı oklar (tile'lar arası ilişki çizgisi; Ctrl+sürükle ile kur).
     // Oturum-içi (HWND kimliği restart'ta değişir → kalıcı değil, bilinçli).
-    struct Connector { HWND a = nullptr, b = nullptr; };
+    // M75: exeA/exeB kalıcılık anahtarı (HWND restart'ta değişir → exe ile yeniden bağlanır),
+    // label ok üstüne yazılan etiket. a/b runtime HWND (ReconcileConnectors günceller).
+    struct Connector { HWND a = nullptr, b = nullptr; std::wstring exeA, exeB, label; };
     std::vector<Connector> g_connectors;
     // ---- M73: Spaces (çoklu tuval - sanal masaüstü benzeri) ----
     // Her tuval kendi pencere seti + kamera + FigJam katmanını (not/zone/bağlayıcı) taşır.
@@ -304,6 +306,7 @@ namespace
     bool g_connecting = false;        // Ctrl+sürükle ile bağlantı kuruluyor
     HWND g_connectFrom = nullptr;     // bağlantının başladığı tile
     int g_connDelIdx = -1;            // hover ✕'in ait olduğu bağlantı
+    int g_editConn = -1;              // M75: etiketi düzenlenen bağlayıcı (-1 = yok)
     D2D1_RECT_F g_connDelRect{};
     // M72: sil-geri-al (Ctrl+Z) - son silinen overlay nesnelerini saklar (LIFO, sınırlı).
     // Yalnız not/zone/bağlayıcı; pencere kaldırma kapsam dışı.
@@ -317,6 +320,7 @@ namespace
     POINT g_curClient{};            // M19: kare-başı tek imleç okuması (client)
     bool g_firstRun = false;        // M20: ilk açılış ipucu kartı
     bool g_helpOpen = false;        // M20: F1 kısayol listesi
+    bool g_focusMode = false;       // M74: odak/dim modu - odak dışı pencereler soluk çizilir
     HWND g_focusWnd = nullptr;      // M21: klavye odağındaki tile (HWND - indeks değil)
     ULONGLONG g_activeCounter = 0;  // M21: MRU sırası sayacı
     bool g_pinDrag = false;         // M22: pinned tile ekran-uzayında sürükleniyor
@@ -385,6 +389,7 @@ static void LoadNamedLayout(const std::wstring& name);
 static std::wstring ExeNameOf(HWND hwnd); // M18: kurtarmada hwnd doğrulaması
 static void SavePendingRestore();
 static void SaveLayout();
+static void SaveConnectors(); // M75: bağlayıcı kalıcılığı (her değişiklikte)
 static void ForceForeground(HWND hwnd);
 static int HitTile(float wx, float wy);
 static int HitPinned(POINT cp); // M73: ekran-uzayı pinned tile vuruşu
@@ -1552,11 +1557,8 @@ static void DrawConnectors()
         float s = std::min(std::min(sx, sy), 1.0f); // kutu içinde kal (örtüşme degenere)
         ex = cx + dx * s; ey = cy + dy * s;
     };
-    // ölü bağlantıları temizle (HWND artık canlı tile değil)
-    float t1, t2, t3, t4;
-    g_connectors.erase(std::remove_if(g_connectors.begin(), g_connectors.end(),
-        [&](const Connector& c){ return !boxOf(c.a, t1, t2, t3, t4) || !boxOf(c.b, t1, t2, t3, t4); }),
-        g_connectors.end());
+    // M75: ölü bağlantıyı SİLME - exe anahtarıyla yeniden bağlanır (ReconcileConnectors).
+    // Çözülemeyen uç bu karede çizilmez (aşağıda continue), ama kayıt korunur.
     for (int i = 0; i < (int)g_connectors.size(); i++)
     {
         float cax, cay, hwa, hha, cbx, cby, hwb, hhb;
@@ -1579,6 +1581,19 @@ static void DrawConnectors()
             g_d2dRT->DrawLine(tip, D2D1::Point2F(sbx - dx * ah + dy * ah * 0.55f, sby - dy * ah - dx * ah * 0.55f), g_brPick.get(), lw);
         }
         g_brPick->SetOpacity(1.0f);
+        // M75: etiket (varsa) çizginin ortasının üstünde; düzenleniyorsa imleç + çerçeve
+        std::wstring lbl = g_connectors[i].label;
+        if (g_editConn == i) lbl += L"_";
+        if (!lbl.empty())
+        {
+            float lw2 = 16.0f + (float)lbl.size() * 7.5f;
+            D2D1_RECT_F lr = D2D1::RectF(mx - lw2 / 2, my - 30, mx + lw2 / 2, my - 8);
+            D2D1_ROUNDED_RECT lrr{ lr, 6, 6 };
+            g_d2dRT->FillRoundedRectangle(lrr, g_brBg.get());
+            if (g_editConn == i) g_d2dRT->DrawRoundedRectangle(lrr, g_brSel.get(), 1.5f);
+            g_d2dRT->DrawText(lbl.c_str(), (UINT32)lbl.size(), g_textFmt.get(),
+                D2D1::RectF(lr.left + 6, lr.top + 2, lr.right - 4, lr.bottom), g_brText.get());
+        }
         if (chov) // orta nokta hover ✕ (sil)
         {
             D2D1_RECT_F xr = D2D1::RectF(mx - 11, my - 11, mx + 11, my + 11);
@@ -1962,6 +1977,7 @@ static void DrawOverlay()
             L"Ctrl+Shift+N:  yapışkan not (Tab=renk)\n"
             L"Ctrl+Shift+Z:  bölge çerçevesi (başlıktan sürükle)\n"
             L"Ctrl+Shift+S:  tuvali PNG'ye aktar\n"
+            L"Ctrl+Shift+D:  odak modu (gerisini soluklat)\n"
             L"Delete:  seçilileri / hover'daki not-bölgeyi çıkar\n"
             L"Ctrl+Z:  son silinen not/bölge/bağlayıcıyı geri al\n"
             L"Ctrl+Shift+1..4:  yer imi kaydet\n"
@@ -1980,6 +1996,7 @@ static void DrawOverlay()
             L"Ctrl+Shift+N:  sticky note (Tab=color)\n"
             L"Ctrl+Shift+Z:  zone frame (drag the title bar)\n"
             L"Ctrl+Shift+S:  export canvas to PNG\n"
+            L"Ctrl+Shift+D:  focus mode (dim the rest)\n"
             L"Delete:  remove selected / hovered note-zone\n"
             L"Ctrl+Z:  undo last note/zone/link delete\n"
             L"Ctrl+Shift+1..4:  save bookmark\n"
@@ -2129,7 +2146,7 @@ static void RestoreUndo()
         ShowToast(TL(L"Zone restored", L"Bölge geri geldi")); }
     else { // bağlayıcı: yalnız her iki pencere hâlâ yaşıyorsa anlamlı (ölü ise sonraki karede temizlenir)
         if (r.conn.a && r.conn.b && IsWindow(r.conn.a) && IsWindow(r.conn.b))
-        { g_connectors.push_back(r.conn); ShowToast(TL(L"Link restored", L"Bağlayıcı geri geldi")); }
+        { g_connectors.push_back(r.conn); SaveConnectors(); ShowToast(TL(L"Link restored", L"Bağlayıcı geri geldi")); }
         else ShowToast(TL(L"Link can't be restored (window closed)", L"Bağlayıcı geri gelemez (pencere kapandı)"));
     }
 }
@@ -2155,6 +2172,68 @@ static void LoadZones()
         z.title = line.substr(b[4] + 1);
         g_zones.push_back(z);
         if (g_zones.size() >= 100) break;
+    }
+}
+
+// ---- M75: bağlayıcı kalıcılığı (connectors.txt: exeA|exeB|etiket). Tek-tuval modunda
+// kullanılır; Spaces aktifken spaces.txt conn= satırları devralır (not/zone gibi). ----
+static std::wstring ConnectorsFilePath()
+{
+    std::wstring p = PendingFilePath();
+    return p.substr(0, p.find_last_of(L'\\')) + L"\\connectors.txt";
+}
+static void SaveConnectors()
+{
+    std::wofstream f(ConnectorsFilePath(), std::ios::trunc);
+    if (!f) return;
+    int n = 0;
+    for (auto& c : g_connectors)
+    {
+        if (c.exeA.empty() || c.exeB.empty()) continue;
+        if (n++ >= 200) break;
+        std::wstring lb = c.label;
+        for (auto& ch : lb) if (ch == L'\n' || ch == L'\r' || ch == L'|') ch = L' ';
+        f << c.exeA << L"|" << c.exeB << L"|" << lb << L"\n";
+    }
+}
+static void LoadConnectors()
+{
+    g_connectors.clear();
+    std::wifstream f(ConnectorsFilePath());
+    if (!f) return;
+    std::wstring line;
+    while (std::getline(f, line))
+    {
+        while (!line.empty() && line.back() == L'\r') line.pop_back();
+        size_t b1 = line.find(L'|'); if (b1 == std::wstring::npos) continue;
+        size_t b2 = line.find(L'|', b1 + 1); if (b2 == std::wstring::npos) continue;
+        Connector c;
+        c.exeA = line.substr(0, b1);
+        c.exeB = line.substr(b1 + 1, b2 - b1 - 1);
+        c.label = line.substr(b2 + 1);
+        if (!c.exeA.empty() && !c.exeB.empty()) g_connectors.push_back(c);
+        if (g_connectors.size() >= 200) break;
+    }
+}
+// M75: HWND'leri exe anahtarıyla (yeniden) bağla - restart ya da pencere tekrar açılınca.
+static void ReconcileConnectors()
+{
+    for (auto& c : g_connectors)
+    {
+        if (!c.a || !IsWindow(c.a))
+        {
+            c.a = nullptr;
+            if (!c.exeA.empty())
+                for (auto& t : g_tiles)
+                    if (!t.pinnedFlag && _wcsicmp(t.exe.c_str(), c.exeA.c_str()) == 0) { c.a = t.source; break; }
+        }
+        if (!c.b || !IsWindow(c.b))
+        {
+            c.b = nullptr;
+            if (!c.exeB.empty())
+                for (auto& t : g_tiles)
+                    if (!t.pinnedFlag && _wcsicmp(t.exe.c_str(), c.exeB.c_str()) == 0) { c.b = t.source; break; }
+        }
     }
 }
 
@@ -3090,6 +3169,14 @@ static void SaveSpaces()
             f << L"zone=" << s << L"|" << (int)z.wx << L"|" << (int)z.wy << L"|" << (int)z.w
               << L"|" << (int)z.h << L"|" << (z.color & 3) << L"|" << tt << L"\n";
         }
+        const std::vector<Connector>& cns = (s == g_activeSpace) ? g_connectors : g_spaces[s].conns;
+        for (auto& c : cns) // M75: bağlayıcılar (exe anahtarı kalıcı; HWND restart'ta reconcile)
+        {
+            if (c.exeA.empty() || c.exeB.empty()) continue;
+            std::wstring lb = c.label;
+            for (auto& ch : lb) if (ch == L'\n' || ch == L'\r') ch = L' ';
+            f << L"conn=" << s << L"|" << c.exeA << L"|" << c.exeB << L"|" << lb << L"\n";
+        }
     }
 }
 static void LoadSpaces()
@@ -3100,6 +3187,7 @@ static void LoadSpaces()
     std::unordered_map<int, Camera> cams;
     std::unordered_map<int, std::vector<Note>> pendNotes; // M73 Slice 4: tuval başına not/zone
     std::unordered_map<int, std::vector<Zone>> pendZones;
+    std::unordered_map<int, std::vector<Connector>> pendConns; // M75: tuval başına bağlayıcı
     int active = 0, maxSpace = 0;
     std::wstring line;
     auto cut = [](const std::wstring& s, size_t a, size_t b) { return s.substr(a, b - a); };
@@ -3187,6 +3275,21 @@ static void LoadSpaces()
                 maxSpace = std::max(maxSpace, sp);
             }
         }
+        else if (line.rfind(L"conn=", 0) == 0)
+        {
+            std::vector<size_t> b;
+            for (size_t i = 0; i < line.size(); i++) if (line[i] == L'|') b.push_back(i);
+            if (b.size() >= 3)
+            {
+                int sp = _wtoi(cut(line, 5, b[0]).c_str());
+                Connector c;
+                c.exeA = cut(line, b[0] + 1, b[1]);
+                c.exeB = cut(line, b[1] + 1, b[2]);
+                c.label = line.substr(b[2] + 1);
+                if (!c.exeA.empty() && !c.exeB.empty()) pendConns[sp].push_back(c);
+                maxSpace = std::max(maxSpace, sp);
+            }
+        }
     }
     g_spaces.clear();
     for (int s = 0; s <= maxSpace; s++)
@@ -3196,6 +3299,7 @@ static void LoadSpaces()
         if (cams.count(s)) sp.cam = cams[s];
         if (pendNotes.count(s)) sp.notes = std::move(pendNotes[s]);
         if (pendZones.count(s)) sp.zones = std::move(pendZones[s]);
+        if (pendConns.count(s)) sp.conns = std::move(pendConns[s]);
         g_spaces.push_back(std::move(sp));
     }
     if (g_spaces.empty()) return; // bozuk dosya → lazy init'e bırak
@@ -3203,6 +3307,7 @@ static void LoadSpaces()
     // M73 Slice 4: aktif tuvalın overlay'ini canlı listelere al (LoadNotes/LoadZones'u geçersiz kılar)
     g_notes = std::move(g_spaces[g_activeSpace].notes);
     g_zones = std::move(g_spaces[g_activeSpace].zones);
+    g_connectors = std::move(g_spaces[g_activeSpace].conns); // M75
     g_spacesLoaded = true;
 }
 static void SwitchSpace(int idx)
@@ -3229,12 +3334,13 @@ static void SwitchSpace(int idx)
     g_notes = std::move(g_spaces[idx].notes);          // M73 Slice 4: overlay hydrate
     g_zones = std::move(g_spaces[idx].zones);
     g_connectors = std::move(g_spaces[idx].conns);
+    ReconcileConnectors();                             // M75: yeni tuvalın bağlayıcılarını bağla
     g_camT = g_spaces[idx].cam;                        // yeni tuvalin kamerası
     g_cam = g_camT; g_cam.zoom *= 0.88f;               // M73 Slice 4: hafif zoom-in punch (geçiş hissi)
     g_selSet.clear(); g_focusWnd = nullptr;            // başka tuvalin etkileşim durumu kalmasın
     g_editNote = g_dragNote = g_resizeNote = g_hoverNote = -1; // overlay etkileşim sıfırla
     g_editZone = g_dragZone = g_resizeZone = g_hoverZone = -1;
-    g_connecting = false; g_connectFrom = nullptr;
+    g_connecting = false; g_connectFrom = nullptr; g_editConn = -1; // M75
     ShowToast(TL(L"Space ", L"Tuval ") + std::to_wstring(idx + 1)
         + L"/" + std::to_wstring((int)g_spaces.size()));
     SaveSpaces(); // M73 Slice 3: aktif tuval + yapı kalıcı
@@ -3333,6 +3439,7 @@ static void DeleteSpace(int idx)
     g_notes = std::move(g_spaces[g_activeSpace].notes); // yeni aktif tuvalı canlı listelere
     g_zones = std::move(g_spaces[g_activeSpace].zones);
     g_connectors = std::move(g_spaces[g_activeSpace].conns);
+    ReconcileConnectors();                             // M75
     for (auto& t : g_tiles)                            // görünürlük + hydrate
     {
         auto it = t.places.find(g_activeSpace);
@@ -3344,7 +3451,7 @@ static void DeleteSpace(int idx)
     g_selSet.clear(); g_focusWnd = nullptr;
     g_editNote = g_dragNote = g_resizeNote = g_hoverNote = -1;
     g_editZone = g_dragZone = g_resizeZone = g_hoverZone = -1;
-    g_connecting = false; g_connectFrom = nullptr;
+    g_connecting = false; g_connectFrom = nullptr; g_editConn = -1; // M75
     if (g_spaces.size() <= 1) // tek tuvala döndük → Spaces kapanır, eski dosya akışına dön
     {
         g_spacesLoaded = false;
@@ -3635,17 +3742,34 @@ static void Render()
         g_ctx->PSSetShaderResources(0, 1, &srv);
         g_ctx->Draw(4, 0);
     };
+    // M74: odak/dim modu - odak hedefi (seçili set, yoksa imleç altındaki uygulama) tam
+    // opak, gerisi soluk. Hedef yoksa (boşluğa bakınca) dim devre dışı.
+    bool focusSet = g_focusMode && !g_selSet.empty();
+    std::wstring focusExe;
+    if (g_focusMode && !focusSet)
+    {
+        POINT cp = g_curClient;
+        int h = HitTile(g_cam.x + cp.x / g_cam.zoom, g_cam.y + cp.y / g_cam.zoom);
+        if (h < 0) h = HitPinned(cp);
+        if (h >= 0) focusExe = g_tiles[h].exe;
+    }
+    auto dimOpacity = [&](const Tile& t) -> float {
+        if (!g_focusMode) return t.opacity;
+        bool inFocus = focusSet ? (g_selSet.count(t.source) != 0)
+            : (focusExe.empty() ? true : _wcsicmp(t.exe.c_str(), focusExe.c_str()) == 0);
+        return inFocus ? t.opacity : t.opacity * 0.28f;
+    };
     for (auto& t : g_tiles) // dünya tile'ları (kameralı)
     {
         if (!t.srv || t.pinnedFlag || !t.vis) continue; // M22: pinned ayrı pass'te · M73: gizli tuval
         drawQuad((t.wx - g_cam.x) * g_cam.zoom, (t.wy - g_cam.y) * g_cam.zoom,
-                 t.ww * g_cam.zoom, t.wh * g_cam.zoom, t.srv.get(), t.opacity,
+                 t.ww * g_cam.zoom, t.wh * g_cam.zoom, t.srv.get(), dimOpacity(t),
                  t.blur, t.ww, t.wh);
     }
     for (auto& t : g_tiles) // M22: pinned tile'lar - ekran-sabit, dünyanın üstünde
     {
         if (!t.srv || !t.pinnedFlag || !t.vis) continue; // M73: gizli tuvalin pinned'i de çizilmez
-        drawQuad(t.px, t.py, t.pw, t.ph, t.srv.get(), t.opacity, t.blur, t.ww, t.wh);
+        drawQuad(t.px, t.py, t.pw, t.ph, t.srv.get(), dimOpacity(t), t.blur, t.ww, t.wh);
     }
     DrawOverlay(); // M4: başlık etiketleri + hover vurgusu
     if (g_pngRequest) // M52: PNG dışa aktar (Present'tan ÖNCE - backbuffer dolu, toast karede yok)
@@ -4672,6 +4796,7 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             return 0;
         }
         if (HandlePanelClick(cp)) return 0; // M5: panel önceliklidir
+        if (g_editConn >= 0) { g_editConn = -1; SaveConnectors(); } // M75: herhangi tık etiketi bitirir
         // M73 Slice 4: tuval switcher şeridi (üstte çizilir → tile etkileşiminden önce öncelikli)
         for (auto& tb : g_spaceTabs)
             if (cp.x >= tb.rect.left && cp.x <= tb.rect.right &&
@@ -4798,6 +4923,7 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             PushUndoConn(g_connectors[g_connDelIdx]); // M72
             g_connectors.erase(g_connectors.begin() + g_connDelIdx);
             g_connDelIdx = -1;
+            SaveConnectors(); // M75: kalıcı
             return 0;
         }
         // M44: not etkileşimi (✕=sil, gövde=sürükle). Tile/marquee'den önce - not üstte yüzer.
@@ -4972,8 +5098,15 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
                 bool dup = false;
                 for (auto& c : g_connectors)
                     if ((c.a == g_connectFrom && c.b == b) || (c.a == b && c.b == g_connectFrom)) dup = true;
-                if (!dup) { g_connectors.push_back({ g_connectFrom, b });
-                    ShowToast(TL(L"Linked", L"Bağlandı")); }
+                if (!dup) {
+                    Connector nc; nc.a = g_connectFrom; nc.b = b;
+                    int ia = FindTileByHwnd(g_connectFrom), ib = FindTileByHwnd(b); // M75: exe anahtarı
+                    if (ia >= 0) nc.exeA = g_tiles[ia].exe;
+                    if (ib >= 0) nc.exeB = g_tiles[ib].exe;
+                    g_connectors.push_back(nc);
+                    g_editConn = (int)g_connectors.size() - 1; // M75: hemen etiket yazma moduna gir
+                    SaveConnectors();
+                    ShowToast(TL(L"Link: type a label, Enter=done", L"Bağlayıcı: etiket yaz, Enter=bitir")); }
             }
             g_connecting = false; g_connectFrom = nullptr;
             if (!g_panning) ReleaseCapture();
@@ -5259,6 +5392,13 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             if (vk == VK_DELETE) { PushUndoZone(g_zones[g_editZone]); g_zones.erase(g_zones.begin() + g_editZone); g_editZone = -1; SaveZones(); return 0; } // M72
             return 0;
         }
+        // M75: bağlayıcı etiketi düzenleme modu (boş etiket = etiketsiz ok; metin WM_CHAR'da)
+        if (g_editConn >= 0 && g_activeTile < 0)
+        {
+            if (g_editConn >= (int)g_connectors.size()) { g_editConn = -1; return 0; }
+            if (vk == VK_ESCAPE || vk == VK_RETURN) { g_editConn = -1; SaveConnectors(); return 0; }
+            return 0;
+        }
         // M21: ok tuşları = odak gezinme (autorepeat'ten ÖNCE: tutunca adımlasın)
         if (g_captureRow < 0 && !g_helpOpen && g_activeTile < 0 && mods == 0 &&
             (vk == VK_LEFT || vk == VK_RIGHT || vk == VK_UP || vk == VK_DOWN))
@@ -5378,6 +5518,14 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             g_pngRequest = true;
             return 0;
         }
+        // M74: Ctrl+Shift+D - odak/dim modu (odak dışı pencereler soluk)
+        if (mods == 5 && vk == 'D' && g_activeTile < 0)
+        {
+            g_focusMode = !g_focusMode;
+            ShowToast(g_focusMode ? TL(L"Focus mode on (dim others)", L"Odak modu açık (gerisi soluk)")
+                                  : TL(L"Focus mode off", L"Odak modu kapalı"));
+            return 0;
+        }
         // M54: Ctrl+Shift+Z - imleçte bölge/zon oluştur (başlık-çubuğu imlecin altında) + başlık düzenle
         if (mods == 5 && vk == 'Z' && g_activeTile < 0)
         {
@@ -5440,6 +5588,13 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             wchar_t c = (wchar_t)wp;
             if (c == 8) { if (!g_zones[g_editZone].title.empty()) g_zones[g_editZone].title.pop_back(); }
             else if (c >= 32 && g_zones[g_editZone].title.size() < 80) g_zones[g_editZone].title += c;
+            return 0;
+        }
+        if (g_editConn >= 0 && g_editConn < (int)g_connectors.size()) // M75: bağlayıcı etiketi
+        {
+            wchar_t c = (wchar_t)wp;
+            if (c == 8) { if (!g_connectors[g_editConn].label.empty()) g_connectors[g_editConn].label.pop_back(); }
+            else if (c >= 32 && g_connectors[g_editConn].label.size() < 60) g_connectors[g_editConn].label += c;
             return 0;
         }
         if (g_launchOpen) // M23: başlatıcı giriş kutusu
@@ -5526,6 +5681,7 @@ int RunCanvasApp()
     LoadLayout();
     LoadNotes(); // M44: tuval notlarını geri yükle
     LoadZones(); // M54: bölge çerçevelerini geri yükle
+    LoadConnectors(); // M75: bağlayıcı oklarını geri yükle (exe ile sonra reconcile edilir)
 
     // M5: kullanıcı ayarlarını yükle
     LoadSettings();
@@ -5587,6 +5743,7 @@ int RunCanvasApp()
             L"Spatial Canvas", MB_OK | MB_ICONWARNING);
         return 1;
     }
+    ReconcileConnectors(); // M75: yüklenen bağlayıcıları açık pencerelere bağla
     // M73 Slice 3: Spaces yüklendiyse aktif tuvalın kendi kamerası öncelikli
     if (g_spacesLoaded && g_activeSpace < (int)g_spaces.size()
         && g_spaces[g_activeSpace].cam.zoom > 0.001f)
@@ -5655,6 +5812,7 @@ int RunCanvasApp()
         if (g_tiles.size() != tilesBefore)
         {
             dirty = true; // tile geldi/gitti
+            ReconcileConnectors(); // M75: yeni/giden pencere - bağlayıcıları yeniden eşle
             if (g_searchOpen) UpdateMatches(); // bayat g_matches indeksi → yanlış uçuş
         }
         ULONGLONG now = GetTickCount64();

@@ -74,6 +74,10 @@ struct Camera
     float zoom = 0.25f; // ekran piksel / dünya piksel
 };
 
+// M73 Slice 2: bir pencerenin TEK bir tuvaldaki yerleşimi (paylaşımlı model -
+// aynı pencere her tuvalde ayrı konum/pin durumunda durabilir).
+struct Place { float wx = 0, wy = 0; bool pinned = false; float px = 0, py = 0, pw = 0, ph = 0; };
+
 struct Tile
 {
     HWND source{};
@@ -102,13 +106,17 @@ struct Tile
     ULONGLONG activeSeq = 0; // M21: son aktiflik sırası (Tab MRU döngüsü)
     bool pinnedFlag = false; // M22: ekrana sabit (pan/zoom'u yok sayar)
     float px = 0, py = 0, pw = 0, ph = 0; // M22: ekran-uzayı rect (client)
+    bool vis = true;         // M73: aktif tuvalde görünür mü (runtime; SwitchSpace hesaplar)
+    // M73 Slice 2: pencerenin bulunduğu tuvallar + her tuvaldeki yerleşimi. Anahtar
+    // seti = üyelik (paylaşımlı). t.wx/wy/pin/px.. = AKTİF tuvalin hydrate kopyası.
+    std::unordered_map<int, Place> places;
 };
 
 // ---- M5: Ayarlar ----
 struct Key { int vk = 0; int mods = 0; }; // mods: 1=Ctrl 2=Alt 4=Shift
 
 // M48: uygulama sürümü (app.rc VERSIONINFO ile SENKRON tut - RELEASE.md sürüm listesinde)
-constexpr const wchar_t* APP_VERSION = L"0.58.0";
+constexpr const wchar_t* APP_VERSION = L"0.59.0";
 
 struct Settings
 {
@@ -279,6 +287,20 @@ namespace
     // Oturum-içi (HWND kimliği restart'ta değişir → kalıcı değil, bilinçli).
     struct Connector { HWND a = nullptr, b = nullptr; };
     std::vector<Connector> g_connectors;
+    // ---- M73: Spaces (çoklu tuval - sanal masaüstü benzeri) ----
+    // Her tuval kendi pencere seti + kamera + FigJam katmanını (not/zone/bağlayıcı) taşır.
+    // Aktif tuvalin overlay'i daima g_notes/g_zones/g_connectors'ta; geçişte std::move ile
+    // takas edilir → tüm çizim/hit-test/arama kodu hiç değişmeden çalışır.
+    struct Space { std::wstring name; Camera cam;
+                   std::vector<Note> notes; std::vector<Zone> zones; std::vector<Connector> conns; };
+    std::vector<Space> g_spaces;    // ilk kullanımda EnsureSpaceInit ile kurulur (en az 1)
+    int g_activeSpace = 0;
+    // M73 Slice 3: spaces.txt persistence. LoadSpaces doldurur, AddTile exe ile tüketir.
+    struct SpaceMember { int space; Place place; };
+    std::unordered_map<std::wstring, std::vector<SpaceMember>> g_spaceMembers;
+    bool g_spacesLoaded = false;    // spaces.txt yüklendi → açılış kamerası aktif tuvaldan gelir
+    struct SpaceTab { D2D1_RECT_F rect; int idx; int kind; }; // M73 Slice 4 switcher; kind 0 geç,1 sil,2 yeni
+    std::vector<SpaceTab> g_spaceTabs;
     bool g_connecting = false;        // Ctrl+sürükle ile bağlantı kuruluyor
     HWND g_connectFrom = nullptr;     // bağlantının başladığı tile
     int g_connDelIdx = -1;            // hover ✕'in ait olduğu bağlantı
@@ -365,9 +387,11 @@ static void SavePendingRestore();
 static void SaveLayout();
 static void ForceForeground(HWND hwnd);
 static int HitTile(float wx, float wy);
+static int HitPinned(POINT cp); // M73: ekran-uzayı pinned tile vuruşu
 static void SaveSettings();
 static void ApplyFpsCap();
 static void RestoreOriginal(Tile& t);
+static void RemoveTileAt(int i, bool restoreWindow); // M73: tuval silmede yetim tile'ı kaldır
 static bool QueryAutostart();
 static void ApplyAutostart();
 static void InitD2D();
@@ -1593,7 +1617,7 @@ static void DrawOverlay()
     for (int i = 0; i < (int)g_tiles.size(); i++)
     {
         Tile& t = g_tiles[i];
-        if (t.pinnedFlag) continue; // M22: pinned ayrı pass'te (ekran-uzayı)
+        if (t.pinnedFlag || !t.vis) continue; // M22: pinned ayrı pass'te · M73: gizli tuval
         float sx = (t.wx - g_cam.x) * g_cam.zoom;
         float sy = (t.wy - g_cam.y) * g_cam.zoom;
         float sw = t.ww * g_cam.zoom, sh = t.wh * g_cam.zoom;
@@ -1658,7 +1682,19 @@ static void DrawOverlay()
                 g_d2dRT->DrawBitmap(ico, D2D1::RectF(bg.left + 5, bg.top + 4, bg.left + 25, bg.top + 24));
                 tx = bg.left + 30;
             }
-            g_d2dRT->DrawText(t.title.c_str(), (UINT32)t.title.size(), g_textFmtL.get(),
+            // M73 Slice 2: pencere birden çok tuvaldeyse üyelik rozeti (paylaşımlı)
+            std::wstring lbl = t.title;
+            if (t.places.size() > 1)
+            {
+                std::vector<int> sp;
+                for (auto& pr : t.places) sp.push_back(pr.first + 1);
+                std::sort(sp.begin(), sp.end());
+                lbl += L"  [";
+                for (size_t k = 0; k < sp.size(); k++)
+                    { if (k) lbl += L","; lbl += std::to_wstring(sp[k]); }
+                lbl += L"]";
+            }
+            g_d2dRT->DrawText(lbl.c_str(), (UINT32)lbl.size(), g_textFmtL.get(),
                 D2D1::RectF(tx, bg.top, bg.right - 6, bg.bottom), g_brText.get());
         }
     }
@@ -1718,7 +1754,7 @@ static void DrawOverlay()
     // M22: pinned tile overlay'i (ekran-uzayı) - hover halkası + pin rozeti
     for (auto& t : g_tiles)
     {
-        if (!t.pinnedFlag) continue;
+        if (!t.pinnedFlag || !t.vis) continue; // M73: gizli tuvalin pinned overlay'i çizilmez
         bool hov = (cur.x >= t.px && cur.x <= t.px + t.pw &&
                     cur.y >= t.py && cur.y <= t.py + t.ph);
         if (g_set.hover && hov)
@@ -1750,6 +1786,37 @@ static void DrawOverlay()
         float cx = g_uiX + g_priW / 2.0f, cy = g_uiY + g_priH / 2.0f;
         g_d2dRT->DrawText(hint, (UINT32)wcslen(hint), g_textFmt.get(),
             D2D1::RectF(cx - 380, cy - 70, cx + 380, cy + 70), hb.get());
+    }
+    // M73 Slice 4: tuval switcher şeridi - üst-orta (ara butonunun altında), >1 tuval varken.
+    // Sekmeler [1][2][3] + [+] yeni + [×] aktifi sil. Geometri g_spaceTabs'a → WM_LBUTTONDOWN okur.
+    g_spaceTabs.clear();
+    if ((int)g_spaces.size() > 1 && !g_searchOpen)
+    {
+        int n = (int)g_spaces.size();
+        const float tabW = 36.0f, gap = 5.0f, btnW = 30.0f;
+        float total = n * (tabW + gap) + gap + 2 * (btnW + gap);
+        float x = g_uiX + g_priW / 2.0f - total / 2.0f;
+        float y = g_uiY + 54.0f;
+        auto box = [&](float w, const std::wstring& txt, bool active) -> D2D1_RECT_F {
+            D2D1_RECT_F r = D2D1::RectF(x, y, x + w, y + 30.0f);
+            D2D1_ROUNDED_RECT rr{ r, 7, 7 };
+            g_d2dRT->FillRoundedRectangle(rr, active ? g_brSel.get() : g_brPanelBg.get());
+            g_d2dRT->DrawRoundedRectangle(rr, g_brHover.get(), 1.0f);
+            g_d2dRT->DrawText(txt.c_str(), (UINT32)txt.size(), g_textFmt.get(),
+                D2D1::RectF(r.left + 2, r.top + 4, r.right - 2, r.bottom),
+                active ? g_brPanelBg.get() : g_brText.get());
+            x += w + gap;
+            return r;
+        };
+        for (int s = 0; s < n; s++)
+        {
+            std::wstring lbl = g_spaces[s].name.empty() ? std::to_wstring(s + 1)
+                                                        : g_spaces[s].name.substr(0, 4);
+            g_spaceTabs.push_back({ box(tabW, lbl, s == g_activeSpace), s, 0 });
+        }
+        x += gap;
+        g_spaceTabs.push_back({ box(btnW, L"+", false), -1, 2 });
+        g_spaceTabs.push_back({ box(btnW, L"×", false), -1, 1 });
     }
     DrawDock(cur);     // M13: alt dock (çalışan pencereler)
     DrawAppDock(cur);  // M24: sağ dock (launcher.txt uygulamaları)
@@ -1866,7 +1933,12 @@ static void DrawOverlay()
             L"Çıkış:  " + HotkeyName(g_set.kbExit) + L"\n"
             L"Çift tık:  pencereye dal\n"
             L"Boş alanda sürükle:  çoklu seçim\n"
-            L"Alt kenar:  uygulama dock'u"
+            L"Alt kenar:  uygulama dock'u\n"
+            L"\n— Tuvallar (Spaces) —\n"
+            L"Ctrl+T:  yeni tuval\n"
+            L"Ctrl+Tab:  tuvallar arası geç\n"
+            L"Ctrl+Alt+1..9:  pencereyi tuvale ekle/çıkar\n"
+            L"Üst şerit:  sekme=geç · +=yeni · ×=sil"
           :
             std::wstring(L"Pull back:  ") + HotkeyName(g_set.kbPull) + L"\n"
             L"Panel:  " + HotkeyName(g_set.kbPanel) + L"\n"
@@ -1876,7 +1948,12 @@ static void DrawOverlay()
             L"Exit:  " + HotkeyName(g_set.kbExit) + L"\n"
             L"Double-click:  dive into window\n"
             L"Drag empty space:  multi-select\n"
-            L"Bottom edge:  app dock";
+            L"Bottom edge:  app dock\n"
+            L"\n— Spaces —\n"
+            L"Ctrl+T:  new space\n"
+            L"Ctrl+Tab:  switch spaces\n"
+            L"Ctrl+Alt+1..9:  add/remove window to space\n"
+            L"Top strip:  tab=switch · +=new · ×=delete";
         std::wstring colB = g_set.lang == 1 ?
             L"Ctrl+A:  tüm pencereleri seç\n"
             L"Ctrl+C / Ctrl+V:  pencere çoğalt\n"
@@ -2871,6 +2948,29 @@ static bool AddTile(HWND hwnd)
             g_savedPins.erase(g_savedPins.begin() + i);
             break;
         }
+    // M73 Slice 3: kayıtlı tuval üyeliklerini yükle (spaces.txt); yoksa aktif tuvale tek place
+    {
+        std::wstring exl = t.exe;
+        for (auto& c : exl) c = (wchar_t)towlower(c);
+        auto mit = g_spaceMembers.find(exl);
+        if (mit != g_spaceMembers.end() && !mit->second.empty())
+        {
+            for (auto& m : mit->second)
+                if (m.space >= 0 && m.space < (int)g_spaces.size())
+                    t.places[m.space] = m.place;
+            g_spaceMembers.erase(mit); // bir kez tüket (aynı exe ikinci pencere → eski yol)
+        }
+        if (t.places.empty())
+            t.places[g_activeSpace] = Place{ t.wx, t.wy, t.pinnedFlag, t.px, t.py, t.pw, t.ph };
+        auto ait = t.places.find(g_activeSpace);
+        t.vis = (ait != t.places.end());
+        if (t.vis) // aktif tuvaldaki kayıtlı konuma hydrate et
+        {
+            const Place& p = ait->second;
+            t.wx = p.wx; t.wy = p.wy; t.pinnedFlag = p.pinned;
+            t.px = p.px; t.py = p.py; t.pw = p.pw; t.ph = p.ph;
+        }
+    }
     g_tiles.push_back(std::move(t));
     ParkWindow(g_tiles.back(), (int)g_tiles.size() - 1);
     SaveLayout();
@@ -2901,14 +3001,14 @@ static void FitCamera(bool ignoreSel)
     };
     for (auto& t : g_tiles)
     {
-        if (t.pinnedFlag) continue; // M22: pinned zaten ekranda - sınıra katma
+        if (t.pinnedFlag || !t.vis) continue; // M22: pinned zaten ekranda · M73: gizli tuval
         if (sel && !g_selSet.count(t.source)) continue;
         fold(t.wx, t.wy, t.ww, t.wh);
     }
     if (n == 0 && sel) // bayat seçim (HWND'ler tile olmaktan çıkmış) - tümüne düş
     {
         sel = false;
-        for (auto& t : g_tiles) if (!t.pinnedFlag) fold(t.wx, t.wy, t.ww, t.wh);
+        for (auto& t : g_tiles) if (!t.pinnedFlag && t.vis) fold(t.wx, t.wy, t.ww, t.wh);
     }
     // M45: seçim odaklı değilken notları da çerçevele (uzaktaki not kaybolmasın)
     if (!sel)
@@ -2921,6 +3021,338 @@ static void FitCamera(bool ignoreSel)
     g_camT.zoom = std::min((float)g_sw / bw, (float)g_sh / bh) * 0.9f;
     g_camT.x = minX - ((float)g_sw / g_camT.zoom - bw) * 0.5f;
     g_camT.y = minY - ((float)g_sh / g_camT.zoom - bh) * 0.5f;
+}
+
+// ---- M73: Spaces (çoklu tuval) ----
+// İlk Ctrl+T/Tab'da mevcut görünüm "Tuval 1" olarak yakalanır; WinMain'e dokunmaz.
+static void EnsureSpaceInit()
+{
+    if (g_spaces.empty()) g_spaces.push_back(Space{ L"", g_camT });
+}
+// Aktif tuvaldaki tile konum/pin durumunu places haritasına geri yazar (ayrılmadan önce).
+static void StashActivePlacements()
+{
+    for (auto& t : g_tiles)
+    {
+        auto it = t.places.find(g_activeSpace);
+        if (it != t.places.end())
+            it->second = Place{ t.wx, t.wy, t.pinnedFlag, t.px, t.py, t.pw, t.ph };
+    }
+}
+// M73 Slice 3: Spaces persistence (spaces.txt). Yalnız >1 tuval varken yazılır;
+// tek tuvalde silinir → Spaces kullanmayan kullanıcı eski davranışı görür.
+static std::wstring SpacesFilePath()
+{
+    std::wstring p = PendingFilePath();
+    return p.substr(0, p.find_last_of(L'\\')) + L"\\spaces.txt";
+}
+static void SaveSpaces()
+{
+    if (g_spaces.size() <= 1) { DeleteFileW(SpacesFilePath().c_str()); return; }
+    StashActivePlacements();
+    g_spaces[g_activeSpace].cam = g_camT;
+    std::wofstream f(SpacesFilePath(), std::ios::trunc);
+    if (!f) return;
+    f << L"active=" << g_activeSpace << L"\n";
+    for (int s = 0; s < (int)g_spaces.size(); s++)
+    {
+        std::wstring nm = g_spaces[s].name;
+        for (auto& c : nm) if (c == L'|' || c == L'\n' || c == L'\r') c = L' ';
+        f << L"space=" << s << L"|" << nm << L"\n";
+        f << L"cam=" << s << L"|" << g_spaces[s].cam.x << L"|" << g_spaces[s].cam.y
+          << L"|" << g_spaces[s].cam.zoom << L"\n";
+    }
+    for (auto& t : g_tiles)
+        for (auto& pr : t.places)
+        {
+            const Place& p = pr.second;
+            f << L"tile=" << pr.first << L"|" << t.exe << L"|" << (int)p.wx << L"|"
+              << (int)p.wy << L"|" << (p.pinned ? 1 : 0) << L"|" << (int)p.px << L"|"
+              << (int)p.py << L"|" << (int)p.pw << L"|" << (int)p.ph << L"\n";
+        }
+    // M73 Slice 4: per-tuval not/zone (aktif tuval g_notes/g_zones'ta, diğerleri saklı).
+    // Bağlayıcılar HWND tabanlı → restart'ta geçersiz, bilinçli olarak yazılmaz.
+    for (int s = 0; s < (int)g_spaces.size(); s++)
+    {
+        const std::vector<Note>& nts = (s == g_activeSpace) ? g_notes : g_spaces[s].notes;
+        for (auto& n : nts)
+        {
+            std::wstring tx = n.text;
+            for (auto& c : tx) if (c == L'\n' || c == L'\r') c = L' ';
+            f << L"note=" << s << L"|" << (int)n.wx << L"|" << (int)n.wy << L"|" << (int)n.w
+              << L"|" << (int)n.h << L"|" << (n.color & 3) << L"|" << tx << L"\n";
+        }
+        const std::vector<Zone>& zns = (s == g_activeSpace) ? g_zones : g_spaces[s].zones;
+        for (auto& z : zns)
+        {
+            std::wstring tt = z.title;
+            for (auto& c : tt) if (c == L'\n' || c == L'\r') c = L' ';
+            f << L"zone=" << s << L"|" << (int)z.wx << L"|" << (int)z.wy << L"|" << (int)z.w
+              << L"|" << (int)z.h << L"|" << (z.color & 3) << L"|" << tt << L"\n";
+        }
+    }
+}
+static void LoadSpaces()
+{
+    std::wifstream f(SpacesFilePath());
+    if (!f) return; // yok → eski tek-tuval davranışı (lazy EnsureSpaceInit)
+    std::unordered_map<int, std::wstring> names;
+    std::unordered_map<int, Camera> cams;
+    std::unordered_map<int, std::vector<Note>> pendNotes; // M73 Slice 4: tuval başına not/zone
+    std::unordered_map<int, std::vector<Zone>> pendZones;
+    int active = 0, maxSpace = 0;
+    std::wstring line;
+    auto cut = [](const std::wstring& s, size_t a, size_t b) { return s.substr(a, b - a); };
+    while (std::getline(f, line))
+    {
+        while (!line.empty() && (line.back() == L'\r')) line.pop_back();
+        if (line.rfind(L"active=", 0) == 0) active = _wtoi(line.c_str() + 7);
+        else if (line.rfind(L"space=", 0) == 0)
+        {
+            size_t bar = line.find(L'|', 6);
+            int id = _wtoi(cut(line, 6, bar == std::wstring::npos ? line.size() : bar).c_str());
+            names[id] = (bar == std::wstring::npos) ? L"" : line.substr(bar + 1);
+            maxSpace = std::max(maxSpace, id);
+        }
+        else if (line.rfind(L"cam=", 0) == 0)
+        {
+            std::vector<size_t> b;
+            for (size_t i = 0; i < line.size(); i++) if (line[i] == L'|') b.push_back(i);
+            if (b.size() >= 3)
+            {
+                int id = _wtoi(cut(line, 4, b[0]).c_str());
+                Camera c;
+                c.x = (float)_wtof(cut(line, b[0] + 1, b[1]).c_str());
+                c.y = (float)_wtof(cut(line, b[1] + 1, b[2]).c_str());
+                c.zoom = (float)_wtof(line.substr(b[2] + 1).c_str());
+                if (c.zoom > 0.001f) cams[id] = c;
+                maxSpace = std::max(maxSpace, id);
+            }
+        }
+        else if (line.rfind(L"tile=", 0) == 0)
+        {
+            std::vector<size_t> b;
+            for (size_t i = 0; i < line.size(); i++) if (line[i] == L'|') b.push_back(i);
+            if (b.size() >= 8)
+            {
+                int sp = _wtoi(cut(line, 5, b[0]).c_str());
+                std::wstring exe = cut(line, b[0] + 1, b[1]);
+                Place p;
+                p.wx = (float)_wtoi(cut(line, b[1] + 1, b[2]).c_str());
+                p.wy = (float)_wtoi(cut(line, b[2] + 1, b[3]).c_str());
+                p.pinned = _wtoi(cut(line, b[3] + 1, b[4]).c_str()) != 0;
+                p.px = (float)_wtoi(cut(line, b[4] + 1, b[5]).c_str());
+                p.py = (float)_wtoi(cut(line, b[5] + 1, b[6]).c_str());
+                p.pw = (float)_wtoi(cut(line, b[6] + 1, b[7]).c_str());
+                p.ph = (float)_wtoi(line.substr(b[7] + 1).c_str());
+                std::wstring exl = exe;
+                for (auto& c : exl) c = (wchar_t)towlower(c);
+                if (!exl.empty()) g_spaceMembers[exl].push_back({ sp, p });
+                maxSpace = std::max(maxSpace, sp);
+            }
+        }
+        else if (line.rfind(L"note=", 0) == 0)
+        {
+            std::vector<size_t> b;
+            for (size_t i = 0; i < line.size(); i++) if (line[i] == L'|') b.push_back(i);
+            if (b.size() >= 6)
+            {
+                int sp = _wtoi(cut(line, 5, b[0]).c_str());
+                Note n;
+                n.wx = (float)_wtoi(cut(line, b[0] + 1, b[1]).c_str());
+                n.wy = (float)_wtoi(cut(line, b[1] + 1, b[2]).c_str());
+                n.w = std::clamp((float)_wtoi(cut(line, b[2] + 1, b[3]).c_str()), NOTE_MIN_W, NOTE_MAX);
+                n.h = std::clamp((float)_wtoi(cut(line, b[3] + 1, b[4]).c_str()), NOTE_MIN_H, NOTE_MAX);
+                n.color = _wtoi(cut(line, b[4] + 1, b[5]).c_str()) & 3;
+                n.text = line.substr(b[5] + 1);
+                pendNotes[sp].push_back(n);
+                maxSpace = std::max(maxSpace, sp);
+            }
+        }
+        else if (line.rfind(L"zone=", 0) == 0)
+        {
+            std::vector<size_t> b;
+            for (size_t i = 0; i < line.size(); i++) if (line[i] == L'|') b.push_back(i);
+            if (b.size() >= 6)
+            {
+                int sp = _wtoi(cut(line, 5, b[0]).c_str());
+                Zone z;
+                z.wx = (float)_wtoi(cut(line, b[0] + 1, b[1]).c_str());
+                z.wy = (float)_wtoi(cut(line, b[1] + 1, b[2]).c_str());
+                z.w = std::clamp((float)_wtoi(cut(line, b[2] + 1, b[3]).c_str()), ZONE_MIN_W, 8000.0f);
+                z.h = std::clamp((float)_wtoi(cut(line, b[3] + 1, b[4]).c_str()), ZONE_MIN_H, 8000.0f);
+                z.color = _wtoi(cut(line, b[4] + 1, b[5]).c_str()) & 3;
+                z.title = line.substr(b[5] + 1);
+                pendZones[sp].push_back(z);
+                maxSpace = std::max(maxSpace, sp);
+            }
+        }
+    }
+    g_spaces.clear();
+    for (int s = 0; s <= maxSpace; s++)
+    {
+        Space sp;
+        if (names.count(s)) sp.name = names[s];
+        if (cams.count(s)) sp.cam = cams[s];
+        if (pendNotes.count(s)) sp.notes = std::move(pendNotes[s]);
+        if (pendZones.count(s)) sp.zones = std::move(pendZones[s]);
+        g_spaces.push_back(std::move(sp));
+    }
+    if (g_spaces.empty()) return; // bozuk dosya → lazy init'e bırak
+    g_activeSpace = std::clamp(active, 0, (int)g_spaces.size() - 1);
+    // M73 Slice 4: aktif tuvalın overlay'ini canlı listelere al (LoadNotes/LoadZones'u geçersiz kılar)
+    g_notes = std::move(g_spaces[g_activeSpace].notes);
+    g_zones = std::move(g_spaces[g_activeSpace].zones);
+    g_spacesLoaded = true;
+}
+static void SwitchSpace(int idx)
+{
+    EnsureSpaceInit();
+    if (idx < 0 || idx >= (int)g_spaces.size() || idx == g_activeSpace) return;
+    StashActivePlacements();                           // tile konumlarını sakla
+    g_spaces[g_activeSpace].cam = g_camT;              // kamerayı sakla
+    g_spaces[g_activeSpace].notes = std::move(g_notes);       // M73 Slice 4: overlay stash
+    g_spaces[g_activeSpace].zones = std::move(g_zones);
+    g_spaces[g_activeSpace].conns = std::move(g_connectors);
+    g_activeSpace = idx;
+    for (auto& t : g_tiles)                            // görünürlük + bu tuvaldeki konuma hydrate
+    {
+        auto it = t.places.find(idx);
+        t.vis = (it != t.places.end());
+        if (t.vis)
+        {
+            const Place& p = it->second;
+            t.wx = p.wx; t.wy = p.wy; t.pinnedFlag = p.pinned;
+            t.px = p.px; t.py = p.py; t.pw = p.pw; t.ph = p.ph;
+        }
+    }
+    g_notes = std::move(g_spaces[idx].notes);          // M73 Slice 4: overlay hydrate
+    g_zones = std::move(g_spaces[idx].zones);
+    g_connectors = std::move(g_spaces[idx].conns);
+    g_camT = g_spaces[idx].cam;                        // yeni tuvalin kamerası
+    g_cam = g_camT; g_cam.zoom *= 0.88f;               // M73 Slice 4: hafif zoom-in punch (geçiş hissi)
+    g_selSet.clear(); g_focusWnd = nullptr;            // başka tuvalin etkileşim durumu kalmasın
+    g_editNote = g_dragNote = g_resizeNote = g_hoverNote = -1; // overlay etkileşim sıfırla
+    g_editZone = g_dragZone = g_resizeZone = g_hoverZone = -1;
+    g_connecting = false; g_connectFrom = nullptr;
+    ShowToast(TL(L"Space ", L"Tuval ") + std::to_wstring(idx + 1)
+        + L"/" + std::to_wstring((int)g_spaces.size()));
+    SaveSpaces(); // M73 Slice 3: aktif tuval + yapı kalıcı
+}
+static void NewSpace()
+{
+    EnsureSpaceInit();
+    g_spaces.push_back(Space{ L"", Camera{} });        // yeni boş tuval (varsayılan kamera)
+    SwitchSpace((int)g_spaces.size() - 1);
+}
+static void CycleSpace(int dir)
+{
+    EnsureSpaceInit();
+    if (g_spaces.size() < 2)
+    {
+        ShowToast(TL(L"Only one space — Ctrl+T: new", L"Tek tuval — Ctrl+T: yeni"));
+        return;
+    }
+    int n = (int)g_spaces.size();
+    SwitchSpace(((g_activeSpace + dir) % n + n) % n);
+}
+// M73 Slice 2: hover'daki (ya da seçili) pencereyi hedef tuvale ekle/çıkar (toggle).
+// Paylaşımlı üyelik: pencere birden çok tuvalde olabilir; son tuvaldan çıkarılamaz.
+static void ToggleTileSpace(int target)
+{
+    EnsureSpaceInit();
+    if (target < 0 || target >= (int)g_spaces.size())
+    {
+        ShowToast(TL(L"No such space — Ctrl+T: new", L"Öyle tuval yok — Ctrl+T: yeni"));
+        return;
+    }
+    if (target == g_activeSpace) return;               // zaten bu tuvaldayız
+    std::vector<int> idxs;                             // hedef pencereler
+    if (!g_selSet.empty())
+        for (int i = 0; i < (int)g_tiles.size(); i++)
+            { if (g_selSet.count(g_tiles[i].source)) idxs.push_back(i); }
+    else
+    {
+        POINT cp = g_curClient;
+        int h = HitTile(g_cam.x + cp.x / g_cam.zoom, g_cam.y + cp.y / g_cam.zoom);
+        if (h < 0) h = HitPinned(cp);
+        if (h >= 0) idxs.push_back(h);
+    }
+    if (idxs.empty())
+    {
+        ShowToast(TL(L"Point at a window first", L"Önce bir pencerenin üstüne gel"));
+        return;
+    }
+    StashActivePlacements();                           // aktif tuvalin güncel konumlarını sabitle
+    int added = 0, removed = 0;
+    for (int i : idxs)
+    {
+        Tile& t = g_tiles[i];
+        if (t.places.count(target))
+        {
+            if (t.places.size() <= 1) continue;        // son tuvaldan çıkarma (yetim kalmasın)
+            t.places.erase(target); removed++;
+        }
+        else
+        {
+            t.places[target] = Place{ t.wx, t.wy, t.pinnedFlag, t.px, t.py, t.pw, t.ph };
+            added++;
+        }
+    }
+    std::wstring m = (added ? TL(L"Added to Space ", L"Tuvale eklendi ")
+                            : TL(L"Removed from Space ", L"Tuvaldan çıkarıldı "))
+        + std::to_wstring(target + 1);
+    if (added && removed) m = TL(L"Updated Space ", L"Tuval güncellendi ") + std::to_wstring(target + 1);
+    ShowToast(m);
+    SaveSpaces(); // M73 Slice 3: üyelik değişikliği kalıcı
+}
+// M73 Slice 4: bir tuvalı sil. İçindeki not/zone gider; yalnız o tuvalde olan pencere
+// masaüstüne döner (yetim kalmaz). İndeksler remap edilir. Son tuval silinemez.
+static void DeleteSpace(int idx)
+{
+    if (idx < 0 || idx >= (int)g_spaces.size() || g_spaces.size() <= 1) return;
+    StashActivePlacements();                            // aktif overlay'i sahibine geri koy
+    g_spaces[g_activeSpace].notes = std::move(g_notes);
+    g_spaces[g_activeSpace].zones = std::move(g_zones);
+    g_spaces[g_activeSpace].conns = std::move(g_connectors);
+    g_spaces[g_activeSpace].cam = g_camT;
+    for (int i = (int)g_tiles.size() - 1; i >= 0; i--) // tile üyeliklerini remap
+    {
+        std::unordered_map<int, Place> np;
+        for (auto& pr : g_tiles[i].places)
+        {
+            if (pr.first == idx) continue;             // silinen tuvaldan çıkar
+            np[pr.first > idx ? pr.first - 1 : pr.first] = pr.second; // büyük indeksleri kaydır
+        }
+        g_tiles[i].places = std::move(np);
+        if (g_tiles[i].places.empty()) RemoveTileAt(i, true); // hiçbir tuvalde yok → masaüstüne
+    }
+    g_spaces.erase(g_spaces.begin() + idx);
+    if (g_activeSpace == idx) g_activeSpace = std::min(idx, (int)g_spaces.size() - 1);
+    else if (g_activeSpace > idx) g_activeSpace--;
+    g_notes = std::move(g_spaces[g_activeSpace].notes); // yeni aktif tuvalı canlı listelere
+    g_zones = std::move(g_spaces[g_activeSpace].zones);
+    g_connectors = std::move(g_spaces[g_activeSpace].conns);
+    for (auto& t : g_tiles)                            // görünürlük + hydrate
+    {
+        auto it = t.places.find(g_activeSpace);
+        t.vis = (it != t.places.end());
+        if (t.vis) { const Place& p = it->second; t.wx = p.wx; t.wy = p.wy;
+            t.pinnedFlag = p.pinned; t.px = p.px; t.py = p.py; t.pw = p.pw; t.ph = p.ph; }
+    }
+    g_camT = g_spaces[g_activeSpace].cam; g_cam = g_camT; g_cam.zoom *= 0.88f; // M73 Slice 4: punch
+    g_selSet.clear(); g_focusWnd = nullptr;
+    g_editNote = g_dragNote = g_resizeNote = g_hoverNote = -1;
+    g_editZone = g_dragZone = g_resizeZone = g_hoverZone = -1;
+    g_connecting = false; g_connectFrom = nullptr;
+    if (g_spaces.size() <= 1) // tek tuvala döndük → Spaces kapanır, eski dosya akışına dön
+    {
+        g_spacesLoaded = false;
+        DeleteFileW(SpacesFilePath().c_str());
+        SaveLayout(); SaveNotes(); SaveZones();
+    }
+    else SaveSpaces();
+    ShowToast(TL(L"Space deleted", L"Tuval silindi"));
 }
 
 // ---- Kare güncelleme (poll, render thread'inde - kilit yok) ----
@@ -3205,14 +3637,14 @@ static void Render()
     };
     for (auto& t : g_tiles) // dünya tile'ları (kameralı)
     {
-        if (!t.srv || t.pinnedFlag) continue; // M22: pinned ayrı pass'te
+        if (!t.srv || t.pinnedFlag || !t.vis) continue; // M22: pinned ayrı pass'te · M73: gizli tuval
         drawQuad((t.wx - g_cam.x) * g_cam.zoom, (t.wy - g_cam.y) * g_cam.zoom,
                  t.ww * g_cam.zoom, t.wh * g_cam.zoom, t.srv.get(), t.opacity,
                  t.blur, t.ww, t.wh);
     }
     for (auto& t : g_tiles) // M22: pinned tile'lar - ekran-sabit, dünyanın üstünde
     {
-        if (!t.srv || !t.pinnedFlag) continue;
+        if (!t.srv || !t.pinnedFlag || !t.vis) continue; // M73: gizli tuvalin pinned'i de çizilmez
         drawQuad(t.px, t.py, t.pw, t.ph, t.srv.get(), t.opacity, t.blur, t.ww, t.wh);
     }
     DrawOverlay(); // M4: başlık etiketleri + hover vurgusu
@@ -3537,7 +3969,7 @@ static int HitTile(float wx, float wy)
     for (int i = (int)g_tiles.size() - 1; i >= 0; i--)
     {
         auto& t = g_tiles[i];
-        if (t.pinnedFlag) continue; // M22: pinned dünya hit-test'inde değil
+        if (t.pinnedFlag || !t.vis) continue; // M22: pinned dünya hit-test'inde değil · M73: gizli tuval
         if (wx >= t.wx && wx <= t.wx + t.ww && wy >= t.wy && wy <= t.wy + t.wh)
             return i;
     }
@@ -3554,7 +3986,7 @@ static int HitPinned(POINT cp)
     for (int i = (int)g_tiles.size() - 1; i >= 0; i--)
     {
         auto& t = g_tiles[i];
-        if (!t.pinnedFlag) continue;
+        if (!t.pinnedFlag || !t.vis) continue; // M73: gizli tuvalin pinned'i tıklanamaz
         if (cp.x >= t.px && cp.x <= t.px + t.pw &&
             cp.y >= t.py && cp.y <= t.py + t.ph) return i;
     }
@@ -4240,6 +4672,16 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             return 0;
         }
         if (HandlePanelClick(cp)) return 0; // M5: panel önceliklidir
+        // M73 Slice 4: tuval switcher şeridi (üstte çizilir → tile etkileşiminden önce öncelikli)
+        for (auto& tb : g_spaceTabs)
+            if (cp.x >= tb.rect.left && cp.x <= tb.rect.right &&
+                cp.y >= tb.rect.top && cp.y <= tb.rect.bottom)
+            {
+                if (tb.kind == 0) SwitchSpace(tb.idx);
+                else if (tb.kind == 2) NewSpace();
+                else DeleteSpace(g_activeSpace);
+                return 0;
+            }
         // M61: düzenlenen not/zon DIŞINA tık = düzenlemeyi bitir (boş not terk edilir).
         // Düzenlenen nesnenin üstüne tık = mevcut sürükle/✕ handler'ı devralır.
         if (g_activeTile < 0 && (g_editNote >= 0 || g_editZone >= 0))
@@ -4858,6 +5300,12 @@ static LRESULT CALLBACK CanvasProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             return 0;
         }
         if (vk == VK_F1 && mods == 0) { g_helpOpen = true; return 0; }
+        // M73: Spaces (çoklu tuval) - Ctrl+T yeni, Ctrl+Tab ileri, Ctrl+Shift+Tab geri
+        if (g_activeTile < 0 && vk == 'T' && mods == 1) { NewSpace(); return 0; }
+        if (g_activeTile < 0 && vk == VK_TAB && mods == 1) { CycleSpace(+1); return 0; }
+        if (g_activeTile < 0 && vk == VK_TAB && mods == 5) { CycleSpace(-1); return 0; }
+        // M73 Slice 2: Ctrl+Alt+1..9 = hover/seçili pencereyi tuval N'e ekle/çıkar (toggle)
+        if (g_activeTile < 0 && mods == 3 && vk >= '1' && vk <= '9') { ToggleTileSpace(vk - '1'); return 0; }
         // M21: Tab MRU döngü, Enter odaklı tile'a dal, Esc odağı temizle
         if (g_activeTile < 0 && vk == VK_TAB && (mods == 0 || mods == 4))
         {
@@ -5082,6 +5530,10 @@ int RunCanvasApp()
     // M5: kullanıcı ayarlarını yükle
     LoadSettings();
 
+    // M73 Slice 3: Spaces (çoklu tuval) yapısı + üyelikleri - CreateTiles'tan ÖNCE
+    // (AddTile her pencereyi kayıtlı tuvallarına dağıtır)
+    LoadSpaces();
+
     // M15: pencere kuralları (exclude listesi)
     LoadRules();
 
@@ -5135,8 +5587,17 @@ int RunCanvasApp()
             L"Spatial Canvas", MB_OK | MB_ICONWARNING);
         return 1;
     }
+    // M73 Slice 3: Spaces yüklendiyse aktif tuvalın kendi kamerası öncelikli
+    if (g_spacesLoaded && g_activeSpace < (int)g_spaces.size()
+        && g_spaces[g_activeSpace].cam.zoom > 0.001f)
+    {
+        g_camT = g_spaces[g_activeSpace].cam;
+        g_camT.zoom = std::clamp(g_camT.zoom, 0.02f, g_set.diveZoom * 0.95f);
+        g_cam = g_camT;
+        if (g_camT.zoom < 0.75f) g_swapArmed = true;
+    }
     // M50: son görünümü geri yükle (kayıtlı + açık); yoksa/ilk açılışta tümünü sığdır
-    if (g_set.restoreView && g_hasSavedCam && g_loadCamZ > 0.001f)
+    else if (g_set.restoreView && g_hasSavedCam && g_loadCamZ > 0.001f)
     {
         g_camT.x = g_loadCamX; g_camT.y = g_loadCamY;
         g_camT.zoom = std::clamp(g_loadCamZ, 0.02f, g_set.diveZoom * 0.95f);
@@ -5325,6 +5786,7 @@ done:
     }
     ShowTaskbars(true); // M11: çıkışta görev çubuğu garantili görünür
     SaveLayout(); // son yerleşimi diske yaz (sonraki oturum hatırlar)
+    SaveSpaces(); // M73 Slice 3: tuval yapısı + üyelikleri kalıcılaştır (tek tuvalde dosyayı siler)
     SaveSettings(); // M50: son kamera görünümünü de yaz (restore için)
     DeleteFileW(PendingFilePath().c_str()); // temiz çıkış - sigorta dosyası silinir
     return (int)msg.wParam;

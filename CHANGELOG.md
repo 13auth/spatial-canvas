@@ -3,6 +3,20 @@
 Spatial Canvas — notable user-facing changes. Versioning is milestone-based
 (M = milestone). Dates are 2026.
 
+## 0.59.0 — Spaces (multiple canvases)
+- **Spaces (M73)** — virtual-desktop-style multiple canvases. `Ctrl+T` new space,
+  `Ctrl+Tab` / `Ctrl+Shift+Tab` to switch. Each space keeps its own window set,
+  camera, and notes/zones — a separate context per space.
+- **Shared windows** — the same window can live on several spaces, each with its
+  own position/pin; `Ctrl+Alt+1..9` adds/removes the pointed (or selected) window
+  to a space. A `[1,3]` badge on the hover label shows its memberships.
+- **Switcher strip** — top-center tabs `[1][2][3]` + `[+]` new + `[×]` delete the
+  active space (its windows return to the desktop; the last space can't be removed).
+- **Persistence** — spaces, memberships, per-space notes/zones and cameras survive
+  restarts (`spaces.txt`); with a single space behavior is byte-identical to before.
+- Capture / park / restore paths untouched — windows on hidden spaces still return
+  to their original place on exit (no stranded windows).
+
 ## 0.58.0 — Undo + stability
 - **Undo (`Ctrl+Z`)** restores the last deleted **note, zone, or connector**
   (up to the last 20) — no more fear of the Delete key.
